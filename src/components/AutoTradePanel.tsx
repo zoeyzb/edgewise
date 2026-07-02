@@ -1,7 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AUTO_LEVELS, type AutoLevel } from "@/lib/core/types";
+import {
+  ADVANCED_AUTO_LEVELS,
+  MAIN_AUTO_LEVELS,
+  type AutoLevel,
+} from "@/lib/core/types";
 import { StatusBadge } from "./StatusBadge";
 import { cn } from "@/lib/utils/cn";
 
@@ -75,6 +79,7 @@ export function AutoTradePanel() {
   const [state, setState] = useState<AutoState | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -128,6 +133,10 @@ export function AutoTradePanel() {
 
   return (
     <div className="space-y-6">
+      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+        Auto blocked until you select a Kalshi market or later run Find sportsbook edge.
+      </div>
+
       <div className="rounded-xl border border-edge-border bg-edge-surface p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-medium">Auto Trade System</h3>
@@ -148,9 +157,9 @@ export function AutoTradePanel() {
         )}
 
         <div>
-          <p className="mb-2 text-xs text-edge-muted">Auto level (always selectable)</p>
+          <p className="mb-2 text-xs text-edge-muted">Auto level</p>
           <div className="flex flex-wrap gap-2">
-            {AUTO_LEVELS.map((level) => (
+            {MAIN_AUTO_LEVELS.map((level) => (
               <button
                 key={level}
                 type="button"
@@ -167,6 +176,36 @@ export function AutoTradePanel() {
               </button>
             ))}
           </div>
+        </div>
+
+        <div>
+          <button
+            type="button"
+            onClick={() => setAdvancedOpen((open) => !open)}
+            className="text-xs text-edge-muted hover:text-slate-200"
+          >
+            Advanced auto levels {advancedOpen ? "−" : "+"}
+          </button>
+          {advancedOpen ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {ADVANCED_AUTO_LEVELS.map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  disabled={saving}
+                  onClick={() => setLevel(level)}
+                  className={cn(
+                    "rounded border px-3 py-1.5 text-xs",
+                    state.autoLevel === level
+                      ? "border-edge-accent bg-edge-accent/15 text-edge-accent"
+                      : "border-edge-border text-edge-muted hover:text-slate-200"
+                  )}
+                >
+                  {level}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -278,11 +317,15 @@ export function AutoTradePanel() {
           <Row label="All trades today" value={String(state.counters.tradesToday)} />
           <Row label="Daily realized loss" value={`$${state.counters.dailyRealizedLoss.toFixed(2)}`} />
         </dl>
-        <p className="text-xs text-edge-muted">{state.paperLabel}</p>
-        <p className="text-xs text-edge-muted">
-          {state.shadowStats.label} — captured {state.shadowStats.captured}, missed{" "}
-          {state.shadowStats.missed}
-        </p>
+        {advancedOpen ? (
+          <>
+            <p className="text-xs text-edge-muted">{state.paperLabel}</p>
+            <p className="text-xs text-edge-muted">
+              {state.shadowStats.label} — captured {state.shadowStats.captured}, missed{" "}
+              {state.shadowStats.missed}
+            </p>
+          </>
+        ) : null}
       </div>
 
       {state.logs.length > 0 && (

@@ -8,6 +8,8 @@ export const EXECUTION_MODES = [
   "SHADOW",
 ] as const;
 
+export const MAIN_EXECUTION_MODES = ["MANUAL", "AUTO", "WATCH"] as const;
+
 export type ExecutionMode = (typeof EXECUTION_MODES)[number];
 
 export const AUTO_LEVELS = [
@@ -16,6 +18,10 @@ export const AUTO_LEVELS = [
   "TINY_LIVE_AUTO",
   "STANDARD_AUTO",
 ] as const;
+
+export const MAIN_AUTO_LEVELS = ["TINY_LIVE_AUTO", "STANDARD_AUTO"] as const;
+
+export const ADVANCED_AUTO_LEVELS = ["PAPER_AUTO", "SHADOW_AUTO"] as const;
 
 export type AutoLevel = (typeof AUTO_LEVELS)[number];
 

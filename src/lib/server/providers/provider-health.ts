@@ -139,6 +139,8 @@ export async function buildProviderHealthReport(options?: { probeOdds?: boolean 
   const kalshi = creds ? new KalshiClient(creds, activeEnv) : KalshiClient.withoutCredentials(activeEnv);
   const readiness = await getKeyReadinessReport();
 
+  const prodPair = readiness.kalshiPairs.prod;
+
   const [exchange, balance, positions] = await Promise.all([
     kalshi.getExchangeStatus(),
     creds ? kalshi.getBalance() : Promise.resolve({ ok: false as const, error: { provider: "kalshi" as const, category: "not_configured" as const, message: "PROVIDER_NOT_CONFIGURED" }, status: 401 }),
@@ -161,11 +163,46 @@ export async function buildProviderHealthReport(options?: { probeOdds?: boolean 
         contractBasePath: ODDS_API_CONTRACT.basePath,
       };
 
-  const kalshiAuthStatus = creds
-    ? balance.ok
-      ? "AUTH_OK"
-      : "AUTH_FAILED"
-    : "PROVIDER_NOT_CONFIGURED";
+  const kalshiKeyPairStatus = !creds
+    ? "PROVIDER_NOT_CONFIGURED"
+    : prodPair.pairStatus === "KALSHI_AUTH_TEST_PASSED"
+      ? "KALSHI_KEY_PAIR_PASSED"
+      : prodPair.pairComplete
+        ? prodPair.pairStatus
+        : "KALSHI_KEY_PAIR_INCOMPLETE";
+
+  const kalshiBalanceStatus = !creds
+    ? "NOT_CHECKED"
+    : balance.ok
+      ? "KALSHI_BALANCE_OK"
+      : "KALSHI_BALANCE_FAILED";
+
+  const keyPairPassed = prodPair.pairStatus === "KALSHI_AUTH_TEST_PASSED";
+  let kalshiAuthStatus: string;
+  if (!creds) {
+    kalshiAuthStatus = "PROVIDER_NOT_CONFIGURED";
+  } else if (keyPairPassed && balance.ok) {
+    kalshiAuthStatus = "KALSHI_CONNECTED";
+  } else if (keyPairPassed) {
+    kalshiAuthStatus = "KALSHI_KEY_PAIR_PASSED";
+  } else if (prodPair.pairStatus === "KALSHI_AUTH_TEST_FAILED") {
+    kalshiAuthStatus = "KALSHI_AUTH_TEST_FAILED";
+  } else if (!prodPair.pairComplete) {
+    kalshiAuthStatus = "KALSHI_KEY_PAIR_INCOMPLETE";
+  } else {
+    kalshiAuthStatus = "KALSHI_AUTH_UNTESTED";
+  }
+
+  if (
+    !keyPairPassed &&
+    !balance.ok &&
+    !exchange.ok &&
+    prodPair.pairComplete &&
+    prodPair.pairStatus === "KALSHI_AUTH_TEST_FAILED"
+  ) {
+    kalshiAuthStatus = "AUTH_FAILED";
+  }
+
   const kalshiExchangeStatus = exchange.ok
     ? exchange.data.trading_active
       ? "TRADING_ACTIVE"
@@ -186,9 +223,11 @@ export async function buildProviderHealthReport(options?: { probeOdds?: boolean 
     keyStatus: creds ? "CONFIGURED" : "NOT_CONFIGURED",
     secretScanStatus: config.secretSafety,
     kalshiAuthStatus,
+    kalshiKeyPairStatus,
+    kalshiBalanceStatus,
     kalshiMode: "PRODUCTION",
     kalshiExchangeStatus,
-    kalshiAccountStatus: balance.ok ? "ACCOUNT_OK" : kalshiAuthStatus,
+    kalshiAccountStatus: balance.ok ? "ACCOUNT_OK" : kalshiBalanceStatus,
     kalshiWebSocketStatus: "DISCONNECTED",
     kalshiOrderbookAvailability: exchange.ok ? "REST_AVAILABLE" : "UNAVAILABLE",
     oddsApiQuota: oddsDiagnostics.quota,

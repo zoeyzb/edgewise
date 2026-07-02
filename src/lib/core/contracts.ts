@@ -301,6 +301,10 @@ export interface KalshiMarketSummary {
   close_time?: string;
   expected_expiration_time?: string;
   market_type?: string;
+  subtitle?: string;
+  primary_participant_key?: string;
+  mve_collection_ticker?: string;
+  mve_selected_legs?: unknown;
 }
 
 export interface KalshiOrderbookLevelFp {

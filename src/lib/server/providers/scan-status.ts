@@ -6,6 +6,10 @@ import { buildKalshiMarketsResponse } from "@/lib/server/opportunities/opportuni
 
 export interface PageProviderStatus {
   kalshiAuth: string;
+  kalshiKeyPairStatus: string;
+  kalshiExchangeStatus: string;
+  kalshiBalanceStatus: string;
+  kalshiMarketScanStatus: string;
   kalshiMode: string;
   oddsEdgeStatus: string;
   providersReady: boolean;
@@ -24,11 +28,24 @@ export async function buildPageProviderStatus(): Promise<PageProviderStatus> {
     buildKalshiMarketsResponse(),
   ]);
 
-  const kalshiOk = health.kalshiAuthStatus === "AUTH_OK";
-  const keysPresent = readiness.kalshiProdConfigured;
-  const providersReady = keysPresent && kalshiOk;
+  const kalshiMarketsOk =
+    kalshiScan.dataLabel === "KALSHI_MARKETS_FOUND" && kalshiScan.markets.length > 0;
+  const keyPairPassed = readiness.kalshiPairs.prod.pairStatus === "KALSHI_AUTH_TEST_PASSED";
 
-  const topReview = kalshiScan.markets
+  const kalshiMarketScanStatus = kalshiMarketsOk
+    ? "KALSHI_MARKETS_OK"
+    : kalshiScan.dataLabel === "KALSHI_QUERY_INVALID"
+      ? "KALSHI_QUERY_INVALID"
+      : kalshiScan.dataLabel === "PROVIDER_NOT_CONFIGURED"
+        ? "NOT_RUN"
+        : "KALSHI_MARKETS_EMPTY";
+
+  const providersReady =
+    kalshiMarketsOk ||
+    (readiness.kalshiProdConfigured && keyPairPassed);
+
+  const cleanMarkets = kalshiScan.markets.filter((m) => !m.isCombo);
+  const topReview = cleanMarkets
     .filter((m) => m.labels.includes("REVIEW") || m.labels.includes("CLEAN_SINGLE_MARKET"))
     .slice(0, 5)
     .map((m) => `${m.ticker} — ${m.title}`);
@@ -36,25 +53,23 @@ export async function buildPageProviderStatus(): Promise<PageProviderStatus> {
   let primaryBlocker: string | null = null;
   if (!readiness.kalshiProdConfigured) {
     primaryBlocker = "Missing production Kalshi API pair";
-  } else if (!kalshiOk) {
-    primaryBlocker = `Kalshi auth failed (${health.kalshiAuthStatus})`;
   } else if (kalshiScan.dataLabel === "KALSHI_QUERY_INVALID") {
     primaryBlocker = "Kalshi markets query invalid";
-  } else if (kalshiScan.markets.length === 0) {
-    primaryBlocker = "No tradeable Kalshi markets returned";
+  } else if (!kalshiMarketsOk && !keyPairPassed) {
+    primaryBlocker = `Kalshi setup incomplete (${health.kalshiKeyPairStatus})`;
+  } else if (!kalshiMarketsOk && keyPairPassed) {
+    primaryBlocker = "Kalshi key pair passed — waiting for tradeable markets";
   }
 
   let nextAction = "Review ranked Kalshi markets";
-  if (!keysPresent) {
+  if (!readiness.kalshiProdConfigured) {
     nextAction = "Add production Kalshi API + private key in Settings";
-  } else if (!kalshiOk) {
-    nextAction = "Re-test Kalshi pair in Settings → API Keys";
-  } else if (topReview.length > 0) {
-    nextAction = `Start with: ${topReview[0]}`;
-  } else if (readiness.oddsConfigured) {
-    nextAction = "Optional: run Find sportsbook edge on Kalshi Markets";
+  } else if (kalshiMarketsOk) {
+    nextAction = topReview.length > 0 ? `Start with: ${topReview[0]}` : "Open Clean Markets tab on Kalshi Markets";
+  } else if (keyPairPassed) {
+    nextAction = "Key pair passed — open Kalshi Markets to refresh scan";
   } else {
-    nextAction = "Review Kalshi-only rankings — Odds API optional";
+    nextAction = "Test production Kalshi pair in Settings → API Keys";
   }
 
   const oddsEdgeStatus = readiness.oddsConfigured
@@ -63,6 +78,10 @@ export async function buildPageProviderStatus(): Promise<PageProviderStatus> {
 
   return {
     kalshiAuth: health.kalshiAuthStatus,
+    kalshiKeyPairStatus: health.kalshiKeyPairStatus,
+    kalshiExchangeStatus: health.kalshiExchangeStatus,
+    kalshiBalanceStatus: health.kalshiBalanceStatus,
+    kalshiMarketScanStatus,
     kalshiMode: health.kalshiMode,
     oddsEdgeStatus,
     providersReady,

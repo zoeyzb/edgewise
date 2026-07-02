@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
-import { KalshiMarketsTable } from "@/components/KalshiMarketsTable";
+import { KalshiMarketsTabs } from "@/components/KalshiMarketsTabs";
 import { OpportunityTable } from "@/components/OpportunityTable";
 import {
   buildKalshiMarketsResponse,
   buildOpportunityScanResponse,
 } from "@/lib/server/opportunities/opportunity-service";
 import { getKeyReadinessReport } from "@/lib/server/keys/key-service";
+
+export const dynamic = "force-dynamic";
 
 export default async function KalshiMarketsPage({
   searchParams,
@@ -82,11 +84,7 @@ export default async function KalshiMarketsPage({
         </details>
       ) : null}
 
-      <KalshiMarketsTable
-        markets={data.markets}
-        dataLabel={data.dataLabel}
-        message={`${data.markets.length} ranked markets — open/active first, single markets before combo.`}
-      />
+      <KalshiMarketsTabs markets={data.markets} dataLabel={data.dataLabel} />
 
       {includeOddsEdge ? (
         <section className="space-y-3">

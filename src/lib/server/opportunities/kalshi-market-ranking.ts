@@ -4,8 +4,7 @@ import type { KalshiMarketSummary } from "@/lib/core/contracts";
 import type { KalshiExecutableOrderbook } from "@/lib/core/contracts";
 import { detectKalshiMarketType } from "@/lib/core/market-types";
 import type { KalshiMarketReviewLabel, RankedKalshiMarket } from "@/lib/core/types";
-import { classifyKalshiMarketCategory } from "@/lib/server/opportunities/kalshi-market-classifier";
-import { inferOddsSportKeyFromKalshiMarket } from "@/lib/server/opportunities/sport-mapping";
+import { classifyKalshiMarketCategory, classifyKalshiSportLabel } from "@/lib/server/opportunities/kalshi-market-classifier";
 
 const LOW_LIQUIDITY_DOLLARS = 25;
 const WIDE_SPREAD_DOLLARS = 0.08;
@@ -26,23 +25,20 @@ function parseCloseTime(market: KalshiMarketSummary): number | null {
 
 export function isKalshiComboMarket(market: KalshiMarketSummary): boolean {
   const ticker = market.ticker.toUpperCase();
-  const series = (market.series_ticker ?? "").toUpperCase();
-  const title = (market.title ?? "").toLowerCase();
   const marketType = (market.market_type ?? "").toLowerCase();
-
-  if (
+  const hasMveCollection = Boolean(market.mve_collection_ticker);
+  const hasMveLegs =
+    Array.isArray(market.mve_selected_legs) && market.mve_selected_legs.length >= 2;
+  const hasMultigameTicker = ticker.includes("MULTIGAME");
+  const hasComboMarketType =
     marketType.includes("multivariate") ||
     marketType.includes("combo") ||
-    marketType.includes("parlay")
-  ) {
-    return true;
-  }
-  if (/MVE|MULTI|COMBO|PARLAY/.test(ticker) || /MVE|MULTI|COMBO/.test(series)) {
-    return true;
-  }
-  if (series.startsWith("KXMVE")) return true;
-  if (/\bparlay\b/.test(title)) return true;
-  if (/\bcombo\b/.test(title)) return true;
+    marketType.includes("parlay");
+
+  if (hasMultigameTicker) return true;
+  if (hasMveCollection && hasMveLegs) return true;
+  if (hasComboMarketType && (hasMveCollection || hasMveLegs)) return true;
+
   return false;
 }
 
@@ -204,13 +200,15 @@ export function rankKalshiMarkets(input: {
       eventTicker: market.event_ticker,
     });
     const classification = classifyKalshiMarketCategory(market);
-    const sportKey = inferOddsSportKeyFromKalshiMarket(market);
+    const sportLabel = classifyKalshiSportLabel(market);
     const categorySport =
-      classification.category === "sports"
-        ? sportKey ?? classification.matchedHint ?? "sports"
-        : classification.category === "non_sports"
-          ? "non-sports"
-          : "unknown";
+      classification.category === "non_sports"
+        ? "non-sports"
+        : sportLabel !== "unknown"
+          ? sportLabel
+          : classification.category === "sports"
+            ? "unknown"
+            : "unknown";
 
     const rankScore = computeRankScore({
       liquidity,

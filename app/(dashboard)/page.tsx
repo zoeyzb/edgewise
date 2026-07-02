@@ -13,7 +13,9 @@ export default async function DashboardPage() {
     ? `$${account.bankroll.value.toFixed(2)} (Kalshi)`
     : account?.bankroll?.value != null
       ? `$${account.bankroll.value.toFixed(2)}`
-      : "Not connected";
+      : status.kalshiBalanceStatus === "KALSHI_BALANCE_FAILED"
+        ? "Balance unavailable"
+        : "Not connected";
 
   return (
     <div className="space-y-6">
@@ -26,7 +28,10 @@ export default async function DashboardPage() {
       <section className="rounded-xl border border-edge-border bg-edge-surface p-5 space-y-4">
         <h2 className="font-medium">Status</h2>
         <dl className="grid gap-3 text-sm sm:grid-cols-2">
-          <Row label="Kalshi auth" value={`${status.kalshiAuth} (${status.kalshiMode})`} />
+          <Row label="Production key pair test" value={status.kalshiKeyPairStatus} />
+          <Row label="Exchange status" value={status.kalshiExchangeStatus} />
+          <Row label="Balance status" value={status.kalshiBalanceStatus} />
+          <Row label="Market scan status" value={status.kalshiMarketScanStatus} />
           <Row label="Kalshi markets found" value={String(status.kalshiMarketsFound)} />
           <Row label="Balance" value={bankrollLabel} />
           <Row label="Odds edge" value={status.oddsEdgeStatus} />

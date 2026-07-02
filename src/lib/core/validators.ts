@@ -105,6 +105,12 @@ export function validateMarketsResponse(payload: unknown):
           ? item.expected_expiration_time
           : undefined,
       market_type: typeof item.market_type === "string" ? item.market_type : undefined,
+      subtitle: typeof item.subtitle === "string" ? item.subtitle : undefined,
+      primary_participant_key:
+        typeof item.primary_participant_key === "string" ? item.primary_participant_key : undefined,
+      mve_collection_ticker:
+        typeof item.mve_collection_ticker === "string" ? item.mve_collection_ticker : undefined,
+      mve_selected_legs: item.mve_selected_legs,
     });
   }
   const cursor = typeof payload.cursor === "string" ? payload.cursor : null;

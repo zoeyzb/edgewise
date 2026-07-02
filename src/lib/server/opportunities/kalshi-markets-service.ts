@@ -121,10 +121,13 @@ export async function buildKalshiMarketsScanResponse(): Promise<KalshiMarketsLis
   const orderbooks = await fetchOrderbooksForTopMarkets(topTickers);
   const markets = rankKalshiMarkets({ markets: fetch.marketsTradeable, orderbooks });
 
+  const comboCount = markets.filter((m) => m.isCombo).length;
+  const cleanCount = markets.length - comboCount;
+
   return {
     dataLabel: "KALSHI_MARKETS_FOUND",
     providerStatus: "KALSHI_ONLY",
-    message: `${fetch.marketsTradeable.length} tradeable Kalshi markets ranked — Odds API not called`,
+    message: `${fetch.marketsTradeable.length} tradeable Kalshi markets ranked (${cleanCount} clean, ${comboCount} combo) — Odds API not called`,
     scannedAt,
     markets,
     oddsEdgeItems: [],

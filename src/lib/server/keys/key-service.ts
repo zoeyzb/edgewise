@@ -305,13 +305,13 @@ export async function getKeyReadinessReport() {
     },
     config,
     blockers: [
-      !hasOdds ? KEY_BLOCK_CODES.ODDS_API_KEY_MISSING : null,
       !hasProdApi ? KEY_BLOCK_CODES.KALSHI_PROD_KEY_MISSING : null,
       !hasProdPrivate ? KEY_BLOCK_CODES.KALSHI_PRIVATE_KEY_MISSING : null,
       config.secretSafety === "EXPOSED_BY_MISTAKE"
         ? KEY_BLOCK_CODES.SECRET_EXPOSED_CLIENT_SIDE
         : null,
     ].filter(Boolean),
+    oddsOptional: !hasOdds,
   };
 }
 

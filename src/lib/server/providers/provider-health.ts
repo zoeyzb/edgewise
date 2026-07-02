@@ -130,20 +130,36 @@ async function buildOddsDiagnostics() {
   };
 }
 
-export async function buildProviderHealthReport() {
+export async function buildProviderHealthReport(options?: { probeOdds?: boolean }) {
   const config = getAppConfigReport();
   const appState = await getAppState();
   const prodCreds = await resolveKalshiCredentials("prod");
   const activeEnv: KalshiEnvironment = "prod";
   const creds = prodCreds;
   const kalshi = creds ? new KalshiClient(creds, activeEnv) : KalshiClient.withoutCredentials(activeEnv);
+  const readiness = await getKeyReadinessReport();
 
-  const [exchange, balance, positions, oddsDiagnostics] = await Promise.all([
+  const [exchange, balance, positions] = await Promise.all([
     kalshi.getExchangeStatus(),
     creds ? kalshi.getBalance() : Promise.resolve({ ok: false as const, error: { provider: "kalshi" as const, category: "not_configured" as const, message: "PROVIDER_NOT_CONFIGURED" }, status: 401 }),
     creds ? kalshi.getPositions(20) : Promise.resolve({ ok: false as const, error: { provider: "kalshi" as const, category: "not_configured" as const, message: "PROVIDER_NOT_CONFIGURED" }, status: 401 }),
-    buildOddsDiagnostics(),
   ]);
+
+  const oddsDiagnostics = options?.probeOdds
+    ? await buildOddsDiagnostics()
+    : {
+        status: readiness.oddsConfigured ? "NOT_RUN" : "NOT_CONFIGURED",
+        authStatus: readiness.oddsConfigured ? "KEY_CONFIGURED" : "NOT_CONFIGURED",
+        quota: getOddsQuotaState(),
+        sportsAvailable: 0,
+        sportsScanned: [] as string[],
+        eventsReturned: 0,
+        bookmakersReturned: 0,
+        usableMarkets: 0,
+        failureReason: readiness.oddsConfigured ? null : "ODDS_API_KEY_MISSING",
+        supportedSportKeys: listSupportedOddsSportKeys(),
+        contractBasePath: ODDS_API_CONTRACT.basePath,
+      };
 
   const kalshiAuthStatus = creds
     ? balance.ok
@@ -155,19 +171,19 @@ export async function buildProviderHealthReport() {
       ? "TRADING_ACTIVE"
       : "EXCHANGE_UP_TRADING_DOWN"
     : "UNREACHABLE";
-  const oddsConfigured = oddsDiagnostics.authStatus === "AUTH_OK";
+  const oddsConfigured = readiness.oddsConfigured;
   const oddsUsable = oddsDiagnostics.status === "USABLE";
   const scoreAvailability = "UNCONFIRMED — SCORE_COVERAGE_UNSUPPORTED";
 
   let executionReadiness: ProviderHealthColor = "RED";
-  if (creds && exchange.ok && balance.ok && oddsUsable && oddsDiagnostics.quota.status !== "EXHAUSTED") {
-    executionReadiness = "GREEN";
+  if (creds && exchange.ok && balance.ok) {
+    executionReadiness = oddsUsable && oddsDiagnostics.quota.status !== "EXHAUSTED" ? "GREEN" : "YELLOW";
   } else if (exchange.ok || oddsConfigured) {
     executionReadiness = "YELLOW";
   }
 
   return {
-    keyStatus: creds && oddsConfigured ? "CONFIGURED" : "NOT_CONFIGURED",
+    keyStatus: creds ? "CONFIGURED" : "NOT_CONFIGURED",
     secretScanStatus: config.secretSafety,
     kalshiAuthStatus,
     kalshiMode: "PRODUCTION",
@@ -186,9 +202,11 @@ export async function buildProviderHealthReport() {
     executionReadiness,
     executionReadinessNote:
       executionReadiness === "GREEN"
-        ? "Production keys + usable Odds API — per-trade validation required"
+        ? "Kalshi connected with validated Odds edge path available"
         : executionReadiness === "YELLOW"
-          ? "Watch/display only — missing production pair or usable Odds feed"
+          ? creds && exchange.ok && balance.ok
+            ? "Kalshi-only review mode — Odds edge optional until requested"
+            : "Watch/display only — missing production Kalshi pair"
           : "Execution blocked",
     autoStatus: appState.executionMode === "AUTO" ? "AUTO_SELECTED" : "AUTO_SELECTABLE",
     profitabilityStatus: "UNPROVEN",
@@ -279,7 +297,7 @@ export async function buildGamesResponse(sport?: string) {
     nextAction:
       items.length === 0
         ? "Check Odds API sport coverage or try again closer to game time"
-        : "Use Opportunities for Kalshi ↔ Odds matched edges",
+        : "Use Kalshi Markets → Find sportsbook edge for Odds matching",
     sport: sport ?? "all_supported",
     count: items.length,
     liveCount,

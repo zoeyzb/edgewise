@@ -2,65 +2,75 @@ import "server-only";
 
 import { buildProviderHealthReport } from "@/lib/server/providers/provider-health";
 import { getKeyReadinessReport } from "@/lib/server/keys/key-service";
-import { scanKalshiSportsOpportunities } from "@/lib/server/opportunities/kalshi-sports-scanner";
+import { buildKalshiMarketsResponse } from "@/lib/server/opportunities/opportunity-service";
 
 export interface PageProviderStatus {
   kalshiAuth: string;
   kalshiMode: string;
-  oddsStatus: string;
+  oddsEdgeStatus: string;
   providersReady: boolean;
   primaryBlocker: string | null;
   nextAction: string;
-  kalshiSportsMarkets: number;
+  kalshiMarketsFound: number;
+  topReviewMarkets: string[];
   matchedMarkets: number;
   bettableCount: number;
 }
 
 export async function buildPageProviderStatus(): Promise<PageProviderStatus> {
-  const [health, readiness, scan] = await Promise.all([
+  const [health, readiness, kalshiScan] = await Promise.all([
     buildProviderHealthReport(),
     getKeyReadinessReport(),
-    scanKalshiSportsOpportunities(),
+    buildKalshiMarketsResponse(),
   ]);
 
   const kalshiOk = health.kalshiAuthStatus === "AUTH_OK";
-  const oddsOk = health.oddsDiagnostics.status === "USABLE";
-  const keysPresent = readiness.kalshiProdConfigured && readiness.oddsConfigured;
-  const providersReady = keysPresent && kalshiOk && oddsOk;
+  const keysPresent = readiness.kalshiProdConfigured;
+  const providersReady = keysPresent && kalshiOk;
+
+  const topReview = kalshiScan.markets
+    .filter((m) => m.labels.includes("REVIEW") || m.labels.includes("CLEAN_SINGLE_MARKET"))
+    .slice(0, 5)
+    .map((m) => `${m.ticker} — ${m.title}`);
 
   let primaryBlocker: string | null = null;
-  if (!readiness.kalshiProdConfigured || !readiness.oddsConfigured) {
-    primaryBlocker = "Missing production Kalshi pair or Odds API key";
+  if (!readiness.kalshiProdConfigured) {
+    primaryBlocker = "Missing production Kalshi API pair";
   } else if (!kalshiOk) {
     primaryBlocker = `Kalshi auth failed (${health.kalshiAuthStatus})`;
-  } else if (!oddsOk) {
-    primaryBlocker = health.oddsDiagnostics.failureReason ?? "Odds API not usable";
-  } else if (scan.scanDiagnostics.primaryBlockReason) {
-    primaryBlocker = scan.scanDiagnostics.primaryBlockReason.replaceAll("_", " ");
+  } else if (kalshiScan.dataLabel === "KALSHI_QUERY_INVALID") {
+    primaryBlocker = "Kalshi markets query invalid";
+  } else if (kalshiScan.markets.length === 0) {
+    primaryBlocker = "No tradeable Kalshi markets returned";
   }
 
-  let nextAction = "Review Opportunities for scanned candidates";
+  let nextAction = "Review ranked Kalshi markets";
   if (!keysPresent) {
-    nextAction = "Add production Kalshi API + private key and Odds API key in Settings";
+    nextAction = "Add production Kalshi API + private key in Settings";
   } else if (!kalshiOk) {
     nextAction = "Re-test Kalshi pair in Settings → API Keys";
-  } else if (!oddsOk) {
-    nextAction = "Verify Odds API key quota and auth in Settings";
-  } else if (scan.items.filter((o) => o.state === "BETTABLE").length === 0) {
-    nextAction = primaryBlocker
-      ? `Scanner blocker: ${primaryBlocker} — check scan diagnostics on Opportunities`
-      : "No BETTABLE edges yet — matches may be WATCH or blocked by EV/liquidity gates";
+  } else if (topReview.length > 0) {
+    nextAction = `Start with: ${topReview[0]}`;
+  } else if (readiness.oddsConfigured) {
+    nextAction = "Optional: run Find sportsbook edge on Kalshi Markets";
+  } else {
+    nextAction = "Review Kalshi-only rankings — Odds API optional";
   }
+
+  const oddsEdgeStatus = readiness.oddsConfigured
+    ? "optional — not run"
+    : "optional — key missing";
 
   return {
     kalshiAuth: health.kalshiAuthStatus,
     kalshiMode: health.kalshiMode,
-    oddsStatus: health.oddsDiagnostics.status,
+    oddsEdgeStatus,
     providersReady,
     primaryBlocker,
     nextAction,
-    kalshiSportsMarkets: scan.scanDiagnostics.kalshiSportsMarkets,
-    matchedMarkets: scan.scanDiagnostics.matchedMarkets,
-    bettableCount: scan.items.filter((o) => o.state === "BETTABLE").length,
+    kalshiMarketsFound: kalshiScan.scanDiagnostics?.kalshiActiveMarkets ?? kalshiScan.markets.length,
+    topReviewMarkets: topReview,
+    matchedMarkets: 0,
+    bettableCount: 0,
   };
 }

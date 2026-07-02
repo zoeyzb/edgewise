@@ -1,36 +1,55 @@
 import "server-only";
 
-import { buildTotalsWatchEntry } from "@/lib/core/totals-momentum";
-import { detectKalshiMarketType } from "@/lib/core/market-types";
 import type {
+  KalshiMarketsListResponse,
   OpportunityListResponse,
   ScoredOpportunity,
   TotalsWatchEntry,
 } from "@/lib/core/types";
+import { buildTotalsWatchEntry } from "@/lib/core/totals-momentum";
+import { detectKalshiMarketType } from "@/lib/core/market-types";
+import { rankOpportunities } from "@/lib/core/profit-priority";
 import { scanKalshiSportsOpportunities } from "@/lib/server/opportunities/kalshi-sports-scanner";
+import { buildKalshiMarketsScanResponse } from "@/lib/server/opportunities/kalshi-markets-service";
 import {
   inferOddsSportKeyFromKalshiMarket,
   parseTeamsFromKalshiTitle,
 } from "@/lib/server/opportunities/sport-mapping";
 import { resolveProductionKalshiClient } from "@/lib/server/providers/provider-health";
-import { getKeyReadinessReport } from "@/lib/server/keys/key-service";
-import { rankOpportunities } from "@/lib/core/profit-priority";
 
 export { parseTeamsFromKalshiTitle };
 
-export async function buildOpportunityScanResponse(): Promise<
-  OpportunityListResponse & { scanDiagnostics?: import("@/lib/server/opportunities/kalshi-sports-scanner").ScanDiagnostics }
+export async function buildKalshiMarketsResponse(): Promise<KalshiMarketsListResponse> {
+  return buildKalshiMarketsScanResponse();
+}
+
+export async function buildOpportunityScanResponse(options?: {
+  includeOddsEdge?: boolean;
+}): Promise<
+  OpportunityListResponse & {
+    scanDiagnostics?: import("@/lib/server/opportunities/kalshi-sports-scanner").ScanDiagnostics;
+  }
 > {
-  return scanKalshiSportsOpportunities();
+  if (options?.includeOddsEdge) {
+    return scanKalshiSportsOpportunities();
+  }
+  const kalshi = await buildKalshiMarketsScanResponse();
+  return {
+    dataLabel: kalshi.dataLabel,
+    providerStatus: kalshi.providerStatus,
+    message: kalshi.message,
+    scannedAt: kalshi.scannedAt,
+    items: kalshi.oddsEdgeItems,
+  };
 }
 
 export async function findOpportunityById(opportunityId: string): Promise<ScoredOpportunity | null> {
-  const scan = await buildOpportunityScanResponse();
+  const scan = await buildOpportunityScanResponse({ includeOddsEdge: true });
   return scan.items.find((o) => o.id === opportunityId) ?? null;
 }
 
 export async function buildBestBetsResponse(): Promise<OpportunityListResponse> {
-  const base = await buildOpportunityScanResponse();
+  const base = await buildOpportunityScanResponse({ includeOddsEdge: true });
   const items = base.items.filter(
     (o) =>
       o.state === "BETTABLE" ||
@@ -40,7 +59,7 @@ export async function buildBestBetsResponse(): Promise<OpportunityListResponse> 
 }
 
 export async function buildFastMoneyResponse(): Promise<OpportunityListResponse> {
-  const base = await buildOpportunityScanResponse();
+  const base = await buildOpportunityScanResponse({ includeOddsEdge: true });
   const items = base.items.filter(
     (o) =>
       o.liveStatus === "LIVE" ||
@@ -51,7 +70,7 @@ export async function buildFastMoneyResponse(): Promise<OpportunityListResponse>
 }
 
 export async function buildHighMarginResponse(): Promise<OpportunityListResponse> {
-  const base = await buildOpportunityScanResponse();
+  const base = await buildOpportunityScanResponse({ includeOddsEdge: true });
   const items = base.items.filter(
     (o) =>
       o.edgeBreakdown.edgeTier === "HIGH_MARGIN_EDGE" ||
@@ -68,14 +87,13 @@ export async function buildTotalsWatchlistResponse(): Promise<{
   scannedAt: string;
   items: TotalsWatchEntry[];
 }> {
-  const readiness = await getKeyReadinessReport();
   const { client, configured } = await resolveProductionKalshiClient();
 
-  if (!readiness.oddsConfigured || !configured) {
+  if (!configured) {
     return {
       dataLabel: "PROVIDER_NOT_CONFIGURED",
       providerStatus: "PROVIDER_NOT_CONFIGURED",
-      message: "Configure production Kalshi pair + Odds API key",
+      message: "Configure production Kalshi pair to scan totals markets",
       scannedAt: new Date().toISOString(),
       items: [],
     };

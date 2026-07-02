@@ -40,7 +40,7 @@ export async function buildHealthSnapshot(): Promise<HealthSnapshot> {
       : "PROVIDER_NOT_CONFIGURED",
     oddsApiStatus: "CHECK_HEALTH_FOR_USABILITY",
     manualExecution:
-      readiness.kalshiProdConfigured && readiness.oddsConfigured
+      readiness.kalshiProdConfigured
         ? "READY_WHEN_VALIDATION_BUILT"
         : "PROVIDER_NOT_CONFIGURED",
     autoMode: autoSelected ? "SELECTED" : "SELECTABLE",

@@ -68,6 +68,7 @@ export interface KalshiOnlyScanResult {
   allMarkets: KalshiMarketDiagnostic[];
   sportsMarkets: KalshiMarketDiagnostic[];
   rawMarkets: KalshiMarketSummary[];
+  allTradeableMarkets: KalshiMarketSummary[];
 }
 
 /** Response-body statuses for tradeable markets (GET /markets returns `active` for open). */
@@ -170,6 +171,7 @@ export async function scanKalshiMarketsOnly(): Promise<KalshiOnlyScanResult> {
     allMarkets: [],
     sportsMarkets: [],
     rawMarkets: [],
+    allTradeableMarkets: [],
   };
 
   if (!readiness.kalshiProdConfigured) {
@@ -233,5 +235,6 @@ export async function scanKalshiMarketsOnly(): Promise<KalshiOnlyScanResult> {
     rawMarkets: fetch.marketsTradeable.filter(
       (m) => classifyKalshiMarketCategory(m).category === "sports"
     ),
+    allTradeableMarkets: fetch.marketsTradeable,
   };
 }

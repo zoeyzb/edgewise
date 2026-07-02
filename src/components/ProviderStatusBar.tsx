@@ -16,7 +16,12 @@ export function ProviderStatusBar() {
         const odds = d.providers?.oddsDiagnostics;
         setStatus({
           kalshi: d.providers?.kalshiAuthStatus ?? "—",
-          odds: odds?.status === "USABLE" ? "USABLE" : odds?.failureReason ?? odds?.authStatus ?? "—",
+          odds:
+            odds?.status === "USABLE"
+              ? "USABLE"
+              : odds?.status === "NOT_RUN"
+                ? "optional / not run"
+                : odds?.failureReason ?? odds?.authStatus ?? "—",
         });
       })
       .catch(() => {});

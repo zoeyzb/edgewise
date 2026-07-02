@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "CommonJS",
+    "moduleResolution": "Node10",
+    "outDir": ".test-dist",
+    "rootDir": ".",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": false,
+    "declaration": false,
+    "sourceMap": false,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": [
+    "scripts/tests/**/*.ts",
+    "src/lib/core/**/*.ts",
+    "src/lib/server/keys/key-validator.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".next",
+    ".test-dist",
+    "src/lib/core/kalshi-client.ts",
+    "src/lib/core/odds-client.ts",
+    "src/lib/server/boundary.ts"
+  ]
+}

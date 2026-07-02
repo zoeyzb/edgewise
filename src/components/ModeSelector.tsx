@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { EXECUTION_MODES, type ExecutionMode } from "@/lib/core/types";
+import { MAIN_EXECUTION_MODES, type ExecutionMode } from "@/lib/core/types";
 import { StatusBadge } from "./StatusBadge";
 import { cn } from "@/lib/utils/cn";
 
@@ -39,10 +39,14 @@ export function ModeSelector() {
     }
   }
 
+  const activeMode = MAIN_EXECUTION_MODES.includes(mode as (typeof MAIN_EXECUTION_MODES)[number])
+    ? mode
+    : "MANUAL";
+
   return (
     <div className="flex flex-wrap items-center gap-1">
       <span className="mr-2 text-xs text-edge-muted">Mode</span>
-      {EXECUTION_MODES.map((m) => (
+      {MAIN_EXECUTION_MODES.map((m) => (
         <button
           key={m}
           type="button"
@@ -50,7 +54,7 @@ export function ModeSelector() {
           onClick={() => select(m)}
           className={cn(
             "rounded border px-2.5 py-1 text-xs font-medium transition-colors",
-            mode === m
+            activeMode === m
               ? "border-edge-accent bg-edge-accent/15 text-edge-accent"
               : "border-edge-border bg-edge-surface text-edge-muted hover:text-slate-200",
             m === "AUTO" && "ring-0"
@@ -62,6 +66,11 @@ export function ModeSelector() {
       {mode === "AUTO" && (
         <StatusBadge variant="success" className="ml-1">
           AUTO_SELECTABLE
+        </StatusBadge>
+      )}
+      {(mode === "PAPER" || mode === "SHADOW") && (
+        <StatusBadge variant="muted" className="ml-1">
+          {mode} (Advanced)
         </StatusBadge>
       )}
     </div>

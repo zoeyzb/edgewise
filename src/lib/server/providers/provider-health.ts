@@ -130,51 +130,156 @@ async function buildOddsDiagnostics() {
   };
 }
 
-export async function buildProviderHealthReport() {
+export interface SharedProviderStatus {
+  kalshiKeyPairStatus: string;
+  kalshiExchangeStatus: string;
+  kalshiBalanceStatus: string;
+  kalshiMarketScanStatus: string;
+  oddsEdgeStatus: string;
+  kalshiBalance: number | null;
+  kalshiAuthStatus: string;
+}
+
+export async function buildSharedProviderStatus(input?: {
+  kalshiMarketScanStatus?: string;
+}): Promise<SharedProviderStatus> {
+  const [health, readiness] = await Promise.all([
+    buildProviderHealthReport(),
+    getKeyReadinessReport(),
+  ]);
+  const keyPairPassed = readiness.kalshiPairs.prod.pairStatus === "KALSHI_AUTH_TEST_PASSED";
+  const kalshiReady =
+    keyPairPassed &&
+    health.kalshiExchangeStatus === "TRADING_ACTIVE" &&
+    health.kalshiBalanceStatus === "KALSHI_BALANCE_OK";
+
+  return {
+    kalshiKeyPairStatus: health.kalshiKeyPairStatus,
+    kalshiExchangeStatus: health.kalshiExchangeStatus,
+    kalshiBalanceStatus: health.kalshiBalanceStatus,
+    kalshiMarketScanStatus: input?.kalshiMarketScanStatus ?? "NOT_RUN",
+    oddsEdgeStatus:
+      health.oddsEdgeStatus ??
+      (readiness.oddsConfigured
+        ? "ODDS_OPTIONAL_NOT_RUN"
+        : kalshiReady
+          ? "KALSHI_ONLY_READY"
+          : "ODDS_OPTIONAL_NOT_RUN"),
+    kalshiBalance: health.kalshi?.balance?.balance ?? null,
+    kalshiAuthStatus: health.kalshiAuthStatus,
+  };
+}
+
+export async function buildProviderHealthReport(options?: { probeOdds?: boolean }) {
   const config = getAppConfigReport();
   const appState = await getAppState();
   const prodCreds = await resolveKalshiCredentials("prod");
   const activeEnv: KalshiEnvironment = "prod";
   const creds = prodCreds;
   const kalshi = creds ? new KalshiClient(creds, activeEnv) : KalshiClient.withoutCredentials(activeEnv);
+  const readiness = await getKeyReadinessReport();
 
-  const [exchange, balance, positions, oddsDiagnostics] = await Promise.all([
+  const prodPair = readiness.kalshiPairs.prod;
+
+  const [exchange, balance, positions] = await Promise.all([
     kalshi.getExchangeStatus(),
     creds ? kalshi.getBalance() : Promise.resolve({ ok: false as const, error: { provider: "kalshi" as const, category: "not_configured" as const, message: "PROVIDER_NOT_CONFIGURED" }, status: 401 }),
     creds ? kalshi.getPositions(20) : Promise.resolve({ ok: false as const, error: { provider: "kalshi" as const, category: "not_configured" as const, message: "PROVIDER_NOT_CONFIGURED" }, status: 401 }),
-    buildOddsDiagnostics(),
   ]);
 
-  const kalshiAuthStatus = creds
-    ? balance.ok
-      ? "AUTH_OK"
-      : "AUTH_FAILED"
-    : "PROVIDER_NOT_CONFIGURED";
+  const oddsDiagnostics = options?.probeOdds
+    ? await buildOddsDiagnostics()
+    : {
+        status: readiness.oddsConfigured ? "NOT_RUN" : "NOT_CONFIGURED",
+        authStatus: readiness.oddsConfigured ? "KEY_CONFIGURED" : "NOT_CONFIGURED",
+        quota: getOddsQuotaState(),
+        sportsAvailable: 0,
+        sportsScanned: [] as string[],
+        eventsReturned: 0,
+        bookmakersReturned: 0,
+        usableMarkets: 0,
+        failureReason: readiness.oddsConfigured ? null : "ODDS_API_KEY_MISSING",
+        supportedSportKeys: listSupportedOddsSportKeys(),
+        contractBasePath: ODDS_API_CONTRACT.basePath,
+      };
+
+  const kalshiKeyPairStatus = !creds
+    ? "PROVIDER_NOT_CONFIGURED"
+    : prodPair.pairStatus === "KALSHI_AUTH_TEST_PASSED"
+      ? "KALSHI_KEY_PAIR_PASSED"
+      : prodPair.pairComplete
+        ? prodPair.pairStatus
+        : "KALSHI_KEY_PAIR_INCOMPLETE";
+
+  const kalshiBalanceStatus = !creds
+    ? "NOT_CHECKED"
+    : balance.ok
+      ? "KALSHI_BALANCE_OK"
+      : "KALSHI_BALANCE_FAILED";
+
+  const keyPairPassed = prodPair.pairStatus === "KALSHI_AUTH_TEST_PASSED";
+  let kalshiAuthStatus: string;
+  if (!creds) {
+    kalshiAuthStatus = "PROVIDER_NOT_CONFIGURED";
+  } else if (keyPairPassed && balance.ok) {
+    kalshiAuthStatus = "KALSHI_CONNECTED";
+  } else if (keyPairPassed) {
+    kalshiAuthStatus = "KALSHI_KEY_PAIR_PASSED";
+  } else if (prodPair.pairStatus === "KALSHI_AUTH_TEST_FAILED") {
+    kalshiAuthStatus = "KALSHI_AUTH_TEST_FAILED";
+  } else if (!prodPair.pairComplete) {
+    kalshiAuthStatus = "KALSHI_KEY_PAIR_INCOMPLETE";
+  } else {
+    kalshiAuthStatus = "KALSHI_AUTH_UNTESTED";
+  }
+
+  if (
+    !keyPairPassed &&
+    !balance.ok &&
+    !exchange.ok &&
+    prodPair.pairComplete &&
+    prodPair.pairStatus === "KALSHI_AUTH_TEST_FAILED"
+  ) {
+    kalshiAuthStatus = "AUTH_FAILED";
+  }
+
   const kalshiExchangeStatus = exchange.ok
     ? exchange.data.trading_active
       ? "TRADING_ACTIVE"
       : "EXCHANGE_UP_TRADING_DOWN"
     : "UNREACHABLE";
-  const oddsConfigured = oddsDiagnostics.authStatus === "AUTH_OK";
+  const oddsConfigured = readiness.oddsConfigured;
   const oddsUsable = oddsDiagnostics.status === "USABLE";
+  const oddsEdgeStatus = oddsUsable
+    ? "ODDS_EDGE_USABLE"
+    : options?.probeOdds
+      ? "ODDS_EDGE_NOT_RUN"
+      : oddsConfigured
+        ? "ODDS_OPTIONAL_NOT_RUN"
+        : keyPairPassed && balance.ok
+          ? "KALSHI_ONLY_READY"
+          : "ODDS_OPTIONAL_NOT_RUN";
   const scoreAvailability = "UNCONFIRMED — SCORE_COVERAGE_UNSUPPORTED";
 
   let executionReadiness: ProviderHealthColor = "RED";
-  if (creds && exchange.ok && balance.ok && oddsUsable && oddsDiagnostics.quota.status !== "EXHAUSTED") {
-    executionReadiness = "GREEN";
+  if (creds && exchange.ok && balance.ok) {
+    executionReadiness = oddsUsable && oddsDiagnostics.quota.status !== "EXHAUSTED" ? "GREEN" : "YELLOW";
   } else if (exchange.ok || oddsConfigured) {
     executionReadiness = "YELLOW";
   }
 
   return {
-    keyStatus: creds && oddsConfigured ? "CONFIGURED" : "NOT_CONFIGURED",
+    keyStatus: creds ? "CONFIGURED" : "NOT_CONFIGURED",
     secretScanStatus: config.secretSafety,
     kalshiAuthStatus,
+    kalshiKeyPairStatus,
+    kalshiBalanceStatus,
     kalshiMode: "PRODUCTION",
     kalshiExchangeStatus,
-    kalshiAccountStatus: balance.ok ? "ACCOUNT_OK" : kalshiAuthStatus,
+    kalshiAccountStatus: balance.ok ? "ACCOUNT_OK" : kalshiBalanceStatus,
     kalshiWebSocketStatus: "DISCONNECTED",
     kalshiOrderbookAvailability: exchange.ok ? "REST_AVAILABLE" : "UNAVAILABLE",
+    oddsEdgeStatus,
     oddsApiQuota: oddsDiagnostics.quota,
     oddsApiOddsFreshness: oddsUsable ? "USABLE" : "NOT_USABLE",
     oddsApiScoreAvailability: scoreAvailability,
@@ -186,9 +291,11 @@ export async function buildProviderHealthReport() {
     executionReadiness,
     executionReadinessNote:
       executionReadiness === "GREEN"
-        ? "Production keys + usable Odds API — per-trade validation required"
+        ? "Kalshi connected with validated Odds edge path available"
         : executionReadiness === "YELLOW"
-          ? "Watch/display only — missing production pair or usable Odds feed"
+          ? creds && exchange.ok && balance.ok
+            ? "Kalshi-only review mode — Odds edge optional until requested"
+            : "Watch/display only — missing production Kalshi pair"
           : "Execution blocked",
     autoStatus: appState.executionMode === "AUTO" ? "AUTO_SELECTED" : "AUTO_SELECTABLE",
     profitabilityStatus: "UNPROVEN",
@@ -279,7 +386,7 @@ export async function buildGamesResponse(sport?: string) {
     nextAction:
       items.length === 0
         ? "Check Odds API sport coverage or try again closer to game time"
-        : "Use Opportunities for Kalshi ↔ Odds matched edges",
+        : "Use Kalshi Markets → Find sportsbook edge for Odds matching",
     sport: sport ?? "all_supported",
     count: items.length,
     liveCount,

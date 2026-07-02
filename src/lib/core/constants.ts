@@ -68,7 +68,7 @@ export const BLOCK_CODES = {
 
 export const NAV_ITEMS = [
   { href: "/", label: "Dashboard" },
-  { href: "/opportunities", label: "Opportunities" },
+  { href: "/kalshi-markets", label: "Kalshi Markets" },
   { href: "/auto-trade", label: "Auto" },
   { href: "/account", label: "Account" },
   { href: "/settings/keys", label: "Settings" },

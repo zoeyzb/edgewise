@@ -59,9 +59,10 @@ describe("execute route safety", () => {
     assert.doesNotMatch(content, /body\.stake|body\.price|body\.side/);
   });
 
-  it("auto engine uses executeManualOrder for live", () => {
+  it("auto engine blocks until manual selection or odds edge", () => {
     const content = readFileSync(join(ROOT, "src", "lib", "server", "auto", "auto-engine.ts"), "utf8");
-    assert.match(content, /executeManualOrder/);
+    assert.match(content, /AUTO_BLOCKED/);
+    assert.doesNotMatch(content, /buildOpportunityScanResponse/);
   });
 });
 

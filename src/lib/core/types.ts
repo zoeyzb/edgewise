@@ -8,6 +8,8 @@ export const EXECUTION_MODES = [
   "SHADOW",
 ] as const;
 
+export const MAIN_EXECUTION_MODES = ["MANUAL", "AUTO", "WATCH"] as const;
+
 export type ExecutionMode = (typeof EXECUTION_MODES)[number];
 
 export const AUTO_LEVELS = [
@@ -16,6 +18,10 @@ export const AUTO_LEVELS = [
   "TINY_LIVE_AUTO",
   "STANDARD_AUTO",
 ] as const;
+
+export const MAIN_AUTO_LEVELS = ["TINY_LIVE_AUTO", "STANDARD_AUTO"] as const;
+
+export const ADVANCED_AUTO_LEVELS = ["PAPER_AUTO", "SHADOW_AUTO"] as const;
 
 export type AutoLevel = (typeof AUTO_LEVELS)[number];
 
@@ -538,6 +544,82 @@ export interface TotalsWatchEntry {
   kalshiTotalLine?: number | null;
   sportsbookLiveTotal?: number | null;
   acceleration?: number;
+}
+
+export type KalshiMarketReviewLabel =
+  | "REVIEW"
+  | "WATCH"
+  | "AVOID"
+  | "COMBO_MARKET"
+  | "LOW_LIQUIDITY"
+  | "WIDE_SPREAD"
+  | "CLOSING_SOON"
+  | "CLEAN_SINGLE_MARKET";
+
+export interface RankedKalshiMarket {
+  ticker: string;
+  title: string;
+  eventTicker: string | null;
+  seriesTicker: string | null;
+  categorySport: string;
+  marketType: string;
+  yesBid: string | null;
+  yesAsk: string | null;
+  noBid: string | null;
+  noAsk: string | null;
+  spreadDollars: number | null;
+  liquidityDollars: number | null;
+  volumeFp: string | null;
+  openInterestFp: string | null;
+  closeTime: string | null;
+  status: string | null;
+  isCombo: boolean;
+  rankScore: number;
+  rankPosition: number;
+  labels: KalshiMarketReviewLabel[];
+  rankReason: string;
+  orderbookFreshness: "FRESH" | "STALE" | "UNKNOWN" | "NOT_FETCHED";
+}
+
+export interface KalshiMarketsListResponse {
+  dataLabel:
+    | "REAL_PROVIDER_DATA"
+    | "PROVIDER_NOT_CONFIGURED"
+    | "NO_MATCHES_FOUND"
+    | "KALSHI_QUERY_INVALID"
+    | "KALSHI_QUERY_RETURNED_ZERO"
+    | "KALSHI_MARKETS_FOUND"
+    | "KALSHI_SPORTS_MARKETS_FOUND"
+    | "KALSHI_MARKETS_FOUND_BUT_CLASSIFIER_REJECTED_ALL"
+    | "ODDS_NOT_USED_KALSHI_FIRST";
+  providerStatus: string;
+  message: string;
+  scannedAt: string;
+  markets: RankedKalshiMarket[];
+  oddsEdgeItems: ScoredOpportunity[];
+  scanDiagnostics?: {
+    environment: "prod";
+    kalshiRequestPath: string;
+    kalshiQueryUsed: {
+      limit: number;
+      status?: string;
+      maxMarketsChecked?: number;
+      pagesFetched?: number;
+    };
+    kalshiFetchError?: string | null;
+    kalshiQueryError?: {
+      requestPath: string;
+      statusCode: number;
+      queryParams: Record<string, string | number | undefined>;
+      responseBody: string;
+    } | null;
+    kalshiActiveMarkets: number;
+    kalshiMarketsReturnedRaw?: number;
+    first20MarketTitles?: string[];
+    first20MarketTickers?: string[];
+    oddsEdgeStatus: string;
+    oddsUsed: boolean;
+  };
 }
 
 export interface OpportunityListResponse {

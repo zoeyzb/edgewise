@@ -1,31 +1,47 @@
 import { PageHeader } from "@/components/PageHeader";
 import { StakePanel } from "@/components/StakePanel";
 import { DataSourceBar } from "@/components/DataSourceBar";
-import { buildAccountResponse } from "@/lib/api/responses";
+import { buildAccountResponseFromProviders } from "@/lib/server/providers/provider-health";
+
+export const dynamic = "force-dynamic";
 
 export default async function AccountPage() {
-  const account = await buildAccountResponse();
+  const live = await buildAccountResponseFromProviders();
+
+  const dataLabel = live?.dataLabel ?? "PROVIDER_NOT_CONFIGURED";
+  const connected = live?.bankroll?.label === "KALSHI_BALANCE";
+  const bankrollValue =
+    connected && live?.bankroll?.value != null && typeof live.bankroll.value === "number"
+      ? `$${live.bankroll.value.toFixed(2)}`
+      : "—";
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Account"
         description="Bankroll and stake overview."
-        badge={account.dataLabel ?? "PLACEHOLDER_UI_ONLY"}
+        badge={dataLabel}
       />
       <DataSourceBar
-        dataLabel={account.dataLabel ?? "PLACEHOLDER_UI_ONLY"}
-        status={account.bankroll?.value != null ? "CONNECTED" : "PLACEHOLDER"}
-        freshness="—"
-        blockedReason={account.bankroll?.value == null ? "Bankroll from Kalshi when keys configured" : null}
+        dataLabel={dataLabel}
+        status={connected ? "Connected to Kalshi" : "Not connected to Kalshi"}
+        freshness={connected ? "Live production balance" : "—"}
+        blockedReason={
+          connected
+            ? null
+            : "Configure production Kalshi API + private key in Settings"
+        }
       />
       <div className="rounded-xl border border-edge-border bg-edge-surface p-5">
         <dl className="grid gap-3 text-sm sm:grid-cols-2">
           <div>
             <dt className="text-xs text-edge-muted">Bankroll</dt>
-            <dd className="font-mono">
-              {account.bankroll?.value != null ? `$${account.bankroll.value}` : "—"}
-            </dd>
-            <p className="text-xs text-edge-muted mt-1">{account.bankroll?.note ?? "Placeholder bankroll for stake math"}</p>
+            <dd className="font-mono">{bankrollValue}</dd>
+            <p className="text-xs text-edge-muted mt-1">
+              {connected
+                ? "Sanitized Kalshi production balance"
+                : "Configure production Kalshi API + private key in Settings"}
+            </p>
           </div>
           <div>
             <dt className="text-xs text-edge-muted">Profitability status</dt>

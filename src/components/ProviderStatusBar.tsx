@@ -5,7 +5,9 @@ import { StatusBadge } from "./StatusBadge";
 
 export function ProviderStatusBar() {
   const [status, setStatus] = useState({
-    kalshi: "—",
+    keyPair: "—",
+    exchange: "—",
+    balance: "—",
     odds: "—",
   });
 
@@ -13,10 +15,19 @@ export function ProviderStatusBar() {
     fetch("/api/core/health")
       .then((r) => r.json())
       .then((d) => {
-        const odds = d.providers?.oddsDiagnostics;
+        const providers = d.providers;
+        const odds = providers?.oddsDiagnostics;
         setStatus({
-          kalshi: d.providers?.kalshiAuthStatus ?? "—",
-          odds: odds?.status === "USABLE" ? "USABLE" : odds?.failureReason ?? odds?.authStatus ?? "—",
+          keyPair: providers?.kalshiKeyPairStatus ?? providers?.kalshiAuthStatus ?? "—",
+          exchange: providers?.kalshiExchangeStatus ?? "—",
+          balance: providers?.kalshiBalanceStatus ?? "—",
+          odds:
+            providers?.oddsEdgeStatus ??
+            (odds?.status === "USABLE"
+              ? "ODDS_EDGE_USABLE"
+              : odds?.status === "NOT_RUN"
+                ? "ODDS_OPTIONAL_NOT_RUN"
+                : odds?.failureReason ?? odds?.authStatus ?? "—"),
         });
       })
       .catch(() => {});
@@ -24,7 +35,11 @@ export function ProviderStatusBar() {
 
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs">
-      <StatusBadge variant="muted">Kalshi: {status.kalshi}</StatusBadge>
+      <StatusBadge variant="muted">Key pair: {status.keyPair}</StatusBadge>
+      <StatusBadge variant="muted">Exchange: {status.exchange}</StatusBadge>
+      <StatusBadge variant={status.balance === "KALSHI_BALANCE_OK" ? "success" : "warn"}>
+        Balance: {status.balance}
+      </StatusBadge>
       <StatusBadge variant={status.odds === "USABLE" ? "success" : "warn"}>
         Odds: {status.odds}
       </StatusBadge>

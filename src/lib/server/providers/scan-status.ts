@@ -1,66 +1,95 @@
 import "server-only";
 
-import { buildProviderHealthReport } from "@/lib/server/providers/provider-health";
+import { buildSharedProviderStatus, buildProviderHealthReport } from "@/lib/server/providers/provider-health";
 import { getKeyReadinessReport } from "@/lib/server/keys/key-service";
-import { scanKalshiSportsOpportunities } from "@/lib/server/opportunities/kalshi-sports-scanner";
+import { buildKalshiMarketsResponse } from "@/lib/server/opportunities/opportunity-service";
 
 export interface PageProviderStatus {
   kalshiAuth: string;
+  kalshiKeyPairStatus: string;
+  kalshiExchangeStatus: string;
+  kalshiBalanceStatus: string;
+  kalshiMarketScanStatus: string;
   kalshiMode: string;
-  oddsStatus: string;
+  oddsEdgeStatus: string;
   providersReady: boolean;
   primaryBlocker: string | null;
   nextAction: string;
-  kalshiSportsMarkets: number;
+  kalshiMarketsFound: number;
+  topReviewMarkets: string[];
   matchedMarkets: number;
   bettableCount: number;
 }
 
 export async function buildPageProviderStatus(): Promise<PageProviderStatus> {
-  const [health, readiness, scan] = await Promise.all([
+  const [health, readiness, kalshiScan] = await Promise.all([
     buildProviderHealthReport(),
     getKeyReadinessReport(),
-    scanKalshiSportsOpportunities(),
+    buildKalshiMarketsResponse(),
   ]);
 
-  const kalshiOk = health.kalshiAuthStatus === "AUTH_OK";
-  const oddsOk = health.oddsDiagnostics.status === "USABLE";
-  const keysPresent = readiness.kalshiProdConfigured && readiness.oddsConfigured;
-  const providersReady = keysPresent && kalshiOk && oddsOk;
+  const kalshiMarketsOk =
+    kalshiScan.dataLabel === "KALSHI_MARKETS_FOUND" && kalshiScan.markets.length > 0;
+  const keyPairPassed = readiness.kalshiPairs.prod.pairStatus === "KALSHI_AUTH_TEST_PASSED";
+
+  const kalshiMarketScanStatus = kalshiMarketsOk
+    ? "KALSHI_MARKETS_OK"
+    : kalshiScan.dataLabel === "KALSHI_QUERY_INVALID"
+      ? "KALSHI_QUERY_INVALID"
+      : kalshiScan.dataLabel === "PROVIDER_NOT_CONFIGURED"
+        ? "NOT_RUN"
+        : "KALSHI_MARKETS_EMPTY";
+
+  const shared = await buildSharedProviderStatus({ kalshiMarketScanStatus });
+
+  const providersReady =
+    kalshiMarketsOk ||
+    (readiness.kalshiProdConfigured && keyPairPassed);
+
+  const cleanMarkets = kalshiScan.markets.filter((m) => !m.isCombo);
+  const topReview = cleanMarkets
+    .filter((m) => m.labels.includes("REVIEW") || m.labels.includes("CLEAN_SINGLE_MARKET"))
+    .slice(0, 5)
+    .map((m) => `${m.ticker} — ${m.title}`);
 
   let primaryBlocker: string | null = null;
-  if (!readiness.kalshiProdConfigured || !readiness.oddsConfigured) {
-    primaryBlocker = "Missing production Kalshi pair or Odds API key";
-  } else if (!kalshiOk) {
-    primaryBlocker = `Kalshi auth failed (${health.kalshiAuthStatus})`;
-  } else if (!oddsOk) {
-    primaryBlocker = health.oddsDiagnostics.failureReason ?? "Odds API not usable";
-  } else if (scan.scanDiagnostics.primaryBlockReason) {
-    primaryBlocker = scan.scanDiagnostics.primaryBlockReason.replaceAll("_", " ");
+  if (!readiness.kalshiProdConfigured) {
+    primaryBlocker = "Missing production Kalshi API pair";
+  } else if (kalshiScan.dataLabel === "KALSHI_QUERY_INVALID") {
+    primaryBlocker = "Kalshi markets query invalid";
+  } else if (!kalshiMarketsOk && !keyPairPassed) {
+    primaryBlocker = `Kalshi setup incomplete (${health.kalshiKeyPairStatus})`;
+  } else if (!kalshiMarketsOk && keyPairPassed) {
+    primaryBlocker = "Kalshi key pair passed — waiting for tradeable markets";
   }
 
-  let nextAction = "Review Opportunities for scanned candidates";
-  if (!keysPresent) {
-    nextAction = "Add production Kalshi API + private key and Odds API key in Settings";
-  } else if (!kalshiOk) {
-    nextAction = "Re-test Kalshi pair in Settings → API Keys";
-  } else if (!oddsOk) {
-    nextAction = "Verify Odds API key quota and auth in Settings";
-  } else if (scan.items.filter((o) => o.state === "BETTABLE").length === 0) {
-    nextAction = primaryBlocker
-      ? `Scanner blocker: ${primaryBlocker} — check scan diagnostics on Opportunities`
-      : "No BETTABLE edges yet — matches may be WATCH or blocked by EV/liquidity gates";
+  let nextAction = "Review ranked Kalshi markets";
+  if (!readiness.kalshiProdConfigured) {
+    nextAction = "Add production Kalshi API + private key in Settings";
+  } else if (kalshiMarketsOk) {
+    nextAction = topReview.length > 0 ? `Start with: ${topReview[0]}` : "Open Clean Markets tab on Kalshi Markets";
+  } else if (keyPairPassed) {
+    nextAction = "Key pair passed — open Kalshi Markets to refresh scan";
+  } else {
+    nextAction = "Test production Kalshi pair in Settings → API Keys";
   }
+
+  const oddsEdgeStatus = shared.oddsEdgeStatus;
 
   return {
-    kalshiAuth: health.kalshiAuthStatus,
+    kalshiAuth: shared.kalshiAuthStatus,
+    kalshiKeyPairStatus: shared.kalshiKeyPairStatus,
+    kalshiExchangeStatus: shared.kalshiExchangeStatus,
+    kalshiBalanceStatus: shared.kalshiBalanceStatus,
+    kalshiMarketScanStatus: shared.kalshiMarketScanStatus,
     kalshiMode: health.kalshiMode,
-    oddsStatus: health.oddsDiagnostics.status,
+    oddsEdgeStatus,
     providersReady,
     primaryBlocker,
     nextAction,
-    kalshiSportsMarkets: scan.scanDiagnostics.kalshiSportsMarkets,
-    matchedMarkets: scan.scanDiagnostics.matchedMarkets,
-    bettableCount: scan.items.filter((o) => o.state === "BETTABLE").length,
+    kalshiMarketsFound: kalshiScan.scanDiagnostics?.kalshiActiveMarkets ?? kalshiScan.markets.length,
+    topReviewMarkets: topReview,
+    matchedMarkets: 0,
+    bettableCount: 0,
   };
 }

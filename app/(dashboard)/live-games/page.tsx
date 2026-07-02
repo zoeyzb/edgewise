@@ -19,7 +19,7 @@ export default async function LiveGamesPage() {
 
       <section className="rounded-lg border border-edge-border bg-edge-surface/50 px-4 py-3 text-sm">
         <p>
-          Kalshi {status.kalshiAuth} · Odds {status.oddsStatus}
+          Kalshi {status.kalshiAuth} · Odds edge {status.oddsEdgeStatus}
         </p>
         <p className="mt-1 text-edge-muted">
           {games.primaryBlocker

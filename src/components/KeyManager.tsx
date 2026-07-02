@@ -4,15 +4,17 @@ import { useCallback, useEffect, useState } from "react";
 import type { KeyProvider, KeyRecordPublic } from "@/lib/core/types";
 import { StatusBadge } from "./StatusBadge";
 
+const PROD_PROVIDERS: KeyProvider[] = ["kalshi_prod_api", "kalshi_prod_private"];
+
 const PROVIDER_OPTIONS: {
   value: KeyProvider;
   label: string;
   env: "demo" | "prod" | "external";
 }[] = [
+  { value: "kalshi_prod_api", label: "Production Kalshi API Key", env: "prod" },
+  { value: "kalshi_prod_private", label: "Production Kalshi Private Key", env: "prod" },
   { value: "kalshi_demo_api", label: "Kalshi Demo API Key", env: "demo" },
   { value: "kalshi_demo_private", label: "Kalshi Demo Private Key", env: "demo" },
-  { value: "kalshi_prod_api", label: "Kalshi Production API Key", env: "prod" },
-  { value: "kalshi_prod_private", label: "Kalshi Production Private Key", env: "prod" },
   { value: "odds_api", label: "Odds API Key", env: "external" },
 ];
 
@@ -35,6 +37,70 @@ function isKalshiProvider(provider: KeyProvider) {
   return provider.startsWith("kalshi_");
 }
 
+function PairCard({
+  pair,
+  onTest,
+}: {
+  pair: KalshiPairSummary;
+  onTest: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-edge-border bg-edge-surface p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h3 className="font-medium capitalize">{pair.environment} Kalshi Pair</h3>
+          <p className="mt-1 text-xs text-edge-muted">{pair.message}</p>
+          <dl className="mt-3 space-y-1 text-xs">
+            <div className="flex gap-2">
+              <dt className="text-edge-muted">API key</dt>
+              <dd>{pair.apiPresent ? "present" : "missing"}</dd>
+            </div>
+            <div className="flex gap-2">
+              <dt className="text-edge-muted">Private key</dt>
+              <dd>{pair.privatePresent ? "present" : "missing"}</dd>
+            </div>
+            <div className="flex gap-2">
+              <dt className="text-edge-muted">Pair</dt>
+              <dd className="font-mono">{pair.pairStatus}</dd>
+            </div>
+            {pair.errorCategory ? (
+              <div className="flex gap-2">
+                <dt className="text-edge-muted">Reason</dt>
+                <dd className="font-mono text-amber-300">{pair.errorCategory}</dd>
+              </div>
+            ) : null}
+            <div className="flex gap-2">
+              <dt className="text-edge-muted">Last tested</dt>
+              <dd>{pair.lastTestedAt ?? "never"}</dd>
+            </div>
+          </dl>
+        </div>
+        <StatusBadge
+          variant={
+            pair.pairStatus === "KALSHI_AUTH_TEST_PASSED"
+              ? "success"
+              : pair.pairStatus === "KALSHI_AUTH_TEST_FAILED"
+                ? "danger"
+                : pair.pairComplete
+                  ? "warn"
+                  : "muted"
+          }
+        >
+          {pair.pairStatus}
+        </StatusBadge>
+      </div>
+      <button
+        type="button"
+        onClick={onTest}
+        disabled={!pair.pairComplete}
+        className="mt-4 rounded border border-edge-border px-3 py-1.5 text-xs text-edge-muted hover:text-slate-200 disabled:opacity-40"
+      >
+        Test Production Pair
+      </button>
+    </div>
+  );
+}
+
 export function KeyManager() {
   const [keys, setKeys] = useState<KeyRecordPublic[]>([]);
   const [kalshiPairs, setKalshiPairs] = useState<{
@@ -42,9 +108,10 @@ export function KeyManager() {
     prod: KalshiPairSummary;
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [form, setForm] = useState({
     label: "",
-    provider: "kalshi_demo_api" as KeyProvider,
+    provider: "kalshi_prod_api" as KeyProvider,
     value: "",
   });
   const [message, setMessage] = useState("");
@@ -134,77 +201,18 @@ export function KeyManager() {
   }
 
   const privateKeyInput = isPrivateKeyProvider(form.provider);
+  const prodPair = kalshiPairs?.prod ?? null;
 
   return (
     <div className="space-y-6">
-      {kalshiPairs ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {(["demo", "prod"] as const).map((env) => {
-            const pair = kalshiPairs[env];
-            return (
-              <div key={env} className="rounded-xl border border-edge-border bg-edge-surface p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <h3 className="font-medium capitalize">{env} Kalshi Pair</h3>
-                    <p className="mt-1 text-xs text-edge-muted">{pair.message}</p>
-                    <dl className="mt-3 space-y-1 text-xs">
-                      <div className="flex gap-2">
-                        <dt className="text-edge-muted">API key</dt>
-                        <dd>{pair.apiPresent ? "present" : "missing"}</dd>
-                      </div>
-                      <div className="flex gap-2">
-                        <dt className="text-edge-muted">Private key</dt>
-                        <dd>{pair.privatePresent ? "present" : "missing"}</dd>
-                      </div>
-                      <div className="flex gap-2">
-                        <dt className="text-edge-muted">Pair</dt>
-                        <dd className="font-mono">{pair.pairStatus}</dd>
-                      </div>
-                      {pair.errorCategory ? (
-                        <div className="flex gap-2">
-                          <dt className="text-edge-muted">Reason</dt>
-                          <dd className="font-mono text-amber-300">{pair.errorCategory}</dd>
-                        </div>
-                      ) : null}
-                      <div className="flex gap-2">
-                        <dt className="text-edge-muted">Last tested</dt>
-                        <dd>{pair.lastTestedAt ?? "never"}</dd>
-                      </div>
-                    </dl>
-                  </div>
-                  <StatusBadge
-                    variant={
-                      pair.pairStatus === "KALSHI_AUTH_TEST_PASSED"
-                        ? "success"
-                        : pair.pairStatus === "KALSHI_AUTH_TEST_FAILED"
-                          ? "danger"
-                          : pair.pairComplete
-                            ? "warn"
-                            : "muted"
-                    }
-                  >
-                    {pair.pairStatus}
-                  </StatusBadge>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => testKalshiPair(env)}
-                  disabled={!pair.pairComplete}
-                  className="mt-4 rounded border border-edge-border px-3 py-1.5 text-xs text-edge-muted hover:text-slate-200 disabled:opacity-40"
-                >
-                  Test Kalshi Pair ({env})
-                </button>
-              </div>
-            );
-          })}
-        </div>
+      {prodPair ? (
+        <PairCard pair={prodPair} onTest={() => testKalshiPair("prod")} />
       ) : null}
 
       <div className="rounded-xl border border-edge-border bg-edge-surface p-5">
-        <h3 className="font-medium">Add / Update Key</h3>
+        <h3 className="font-medium">Production Kalshi Keys</h3>
         <p className="mt-1 text-xs text-edge-muted">
-          Keys stored encrypted server-side. Never exposed to browser after save.
-          Kalshi API key and private key are saved separately but validated together as one pair.
+          Save production API key and private key separately. Test the pair after both are saved.
         </p>
         <form onSubmit={addKey} className="mt-4 grid gap-3 sm:grid-cols-2">
           <label className="text-xs">
@@ -213,17 +221,23 @@ export function KeyManager() {
               value={form.label}
               onChange={(e) => setForm({ ...form, label: e.target.value })}
               className="mt-1 w-full rounded border border-edge-border bg-edge-bg px-3 py-2 text-sm"
-              placeholder="My Kalshi demo key"
+              placeholder="Production Kalshi API key"
             />
           </label>
           <label className="text-xs">
             <span className="text-edge-muted">Provider</span>
             <select
               value={form.provider}
-              onChange={(e) => setForm({ ...form, provider: e.target.value as KeyProvider, value: "" })}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  provider: e.target.value as KeyProvider,
+                  value: "",
+                })
+              }
               className="mt-1 w-full rounded border border-edge-border bg-edge-bg px-3 py-2 text-sm"
             >
-              {PROVIDER_OPTIONS.map((p) => (
+              {PROVIDER_OPTIONS.filter((p) => PROD_PROVIDERS.includes(p.value)).map((p) => (
                 <option key={p.value} value={p.value}>
                   {p.label}
                 </option>
@@ -256,56 +270,77 @@ export function KeyManager() {
             type="submit"
             className="rounded bg-edge-accent/20 px-4 py-2 text-sm font-medium text-edge-accent hover:bg-edge-accent/30 sm:col-span-2"
           >
-            Save Key
+            Save
           </button>
         </form>
-        {message && <p className="mt-3 text-xs text-edge-muted">{message}</p>}
+        {message ? <p className="mt-3 text-xs text-edge-muted">{message}</p> : null}
       </div>
 
       <div className="rounded-xl border border-edge-border bg-edge-surface p-5">
-        <h3 className="font-medium">Stored Keys</h3>
-        {loading ? (
-          <p className="mt-3 text-sm text-edge-muted">Loading...</p>
-        ) : keys.length === 0 ? (
-          <p className="mt-3 text-sm text-edge-muted">No keys configured.</p>
-        ) : (
-          <ul className="mt-4 space-y-3">
-            {keys.map((key) => (
-              <li key={key.id} className="rounded-lg border border-edge-border p-4">
-                <div className="flex flex-wrap items-start justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen((v) => !v)}
+          className="flex w-full items-center justify-between text-sm font-medium"
+        >
+          <span>Advanced keys</span>
+          <span className="text-edge-muted">{advancedOpen ? "−" : "+"}</span>
+        </button>
+        {advancedOpen ? (
+          <div className="mt-4 space-y-4">
+            {kalshiPairs?.demo ? (
+              <div className="rounded-lg border border-edge-border p-4">
+                <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="font-medium">{key.label}</p>
-                    <p className="text-xs text-edge-muted">{key.provider}</p>
-                    <p className="mt-1 font-mono text-xs">{key.maskedPreview}</p>
-                    <p className="mt-1 text-xs text-edge-muted">
-                      Environment: {key.environment} · Last tested: {key.lastTestedAt ?? "never"}
-                    </p>
-                    {key.quotaStatus && (
-                      <p className="text-xs text-edge-muted">Quota: {key.quotaStatus}</p>
-                    )}
-                    {key.errorCategory && (
-                      <p className="text-xs text-amber-300/80">Reason: {key.errorCategory}</p>
-                    )}
+                    <h4 className="text-sm font-medium">Demo Kalshi Pair</h4>
+                    <p className="mt-1 text-xs text-edge-muted">{kalshiPairs.demo.message}</p>
                   </div>
-                  <StatusBadge variant={key.enabled ? "success" : "muted"}>
-                    {key.status}
-                  </StatusBadge>
+                  <StatusBadge variant="muted">{kalshiPairs.demo.pairStatus}</StatusBadge>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {!isKalshiProvider(key.provider) ? (
-                    <ActionBtn onClick={() => testOddsKey(key.id)}>Test</ActionBtn>
-                  ) : (
-                    <span className="rounded border border-edge-border px-2 py-1 text-xs text-edge-muted">
-                      Use Test Kalshi Pair
-                    </span>
-                  )}
-                  <ActionBtn onClick={() => disableKey(key.id)}>Disable</ActionBtn>
-                  <ActionBtn onClick={() => removeKey(key.id)}>Remove</ActionBtn>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+                <button
+                  type="button"
+                  onClick={() => testKalshiPair("demo")}
+                  disabled={!kalshiPairs.demo.pairComplete}
+                  className="mt-3 rounded border border-edge-border px-3 py-1.5 text-xs text-edge-muted hover:text-slate-200 disabled:opacity-40"
+                >
+                  Test Demo Pair
+                </button>
+              </div>
+            ) : null}
+
+            <div>
+              <h4 className="text-sm font-medium">Stored Keys</h4>
+              {loading ? (
+                <p className="mt-3 text-sm text-edge-muted">Loading...</p>
+              ) : keys.length === 0 ? (
+                <p className="mt-3 text-sm text-edge-muted">No keys configured.</p>
+              ) : (
+                <ul className="mt-4 space-y-3">
+                  {keys.map((key) => (
+                    <li key={key.id} className="rounded-lg border border-edge-border p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <p className="font-medium">{key.label}</p>
+                          <p className="text-xs text-edge-muted">{key.provider}</p>
+                          <p className="mt-1 font-mono text-xs">{key.maskedPreview}</p>
+                        </div>
+                        <StatusBadge variant={key.enabled ? "success" : "muted"}>
+                          {key.status}
+                        </StatusBadge>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {!isKalshiProvider(key.provider) ? (
+                          <ActionBtn onClick={() => testOddsKey(key.id)}>Test</ActionBtn>
+                        ) : null}
+                        <ActionBtn onClick={() => disableKey(key.id)}>Disable</ActionBtn>
+                        <ActionBtn onClick={() => removeKey(key.id)}>Remove</ActionBtn>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

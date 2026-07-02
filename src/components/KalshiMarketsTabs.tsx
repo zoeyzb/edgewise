@@ -8,9 +8,9 @@ import { cn } from "@/lib/utils/cn";
 type MarketTab = "clean" | "combo" | "all";
 
 const TABS: Array<{ id: MarketTab; label: string }> = [
-  { id: "clean", label: "Clean Markets" },
-  { id: "combo", label: "Combo Markets" },
-  { id: "all", label: "All Markets" },
+  { id: "clean", label: "Clean / Review" },
+  { id: "combo", label: "Combo" },
+  { id: "all", label: "All" },
 ];
 
 function isCleanTabMarket(market: RankedKalshiMarket): boolean {

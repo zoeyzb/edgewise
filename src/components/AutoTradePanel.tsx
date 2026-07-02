@@ -122,6 +122,9 @@ export function AutoTradePanel() {
   if (!state) return <p className="text-sm text-edge-danger">Failed to load auto status</p>;
 
   const isAuto = state.executionMode === "AUTO";
+  const autoBlocked =
+    !state.latestCandidate &&
+    state.tradeStatus === "AUTO_WAITING_FOR_VALID_TRADE";
   const badgeVariant =
     state.runtimeState === "AUTO_EMERGENCY_STOP"
       ? "danger"
@@ -133,9 +136,11 @@ export function AutoTradePanel() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
-        Auto blocked until you select a Kalshi market or later run Find sportsbook edge.
-      </div>
+      {autoBlocked ? (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+          Auto blocked until you select a Kalshi market or run Find sportsbook edge.
+        </div>
+      ) : null}
 
       <div className="rounded-xl border border-edge-border bg-edge-surface p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -148,9 +153,14 @@ export function AutoTradePanel() {
         {!isAuto && (
           <button
             type="button"
-            disabled={saving}
+            disabled={saving || autoBlocked}
             onClick={activateAuto}
-            className="rounded border border-edge-accent bg-edge-accent/15 px-4 py-2 text-sm text-edge-accent hover:bg-edge-accent/25"
+            className={cn(
+              "rounded border px-4 py-2 text-sm",
+              autoBlocked
+                ? "cursor-not-allowed border-edge-border text-edge-muted opacity-60"
+                : "border-edge-accent bg-edge-accent/15 text-edge-accent hover:bg-edge-accent/25"
+            )}
           >
             Activate Auto Mode
           </button>
@@ -163,13 +173,15 @@ export function AutoTradePanel() {
               <button
                 key={level}
                 type="button"
-                disabled={saving}
+                disabled={saving || autoBlocked}
                 onClick={() => setLevel(level)}
                 className={cn(
                   "rounded border px-3 py-1.5 text-xs",
-                  state.autoLevel === level
-                    ? "border-edge-accent bg-edge-accent/15 text-edge-accent"
-                    : "border-edge-border text-edge-muted hover:text-slate-200"
+                  autoBlocked
+                    ? "cursor-not-allowed border-edge-border text-edge-muted opacity-60"
+                    : state.autoLevel === level
+                      ? "border-edge-accent bg-edge-accent/15 text-edge-accent"
+                      : "border-edge-border text-edge-muted hover:text-slate-200"
                 )}
               >
                 {level}
@@ -250,8 +262,11 @@ export function AutoTradePanel() {
         <div className="rounded-xl border border-edge-border bg-edge-surface p-5 space-y-3">
           <h4 className="text-sm font-medium">Scanning & Status</h4>
           <dl className="space-y-2 text-xs">
-            <Row label="Active" value={state.autoActive ? "YES" : "NO"} />
-            <Row label="Scanning" value={state.scanning ? "AUTO_SCANNING" : state.scanningStatus} />
+            <Row label="Auto active" value={state.autoActive ? "YES" : "NO"} />
+            <Row
+              label="Currently scanning"
+              value={state.scanning ? "YES" : state.scanningStatus}
+            />
             <Row label="Trade status" value={state.tradeStatus} />
             {state.pauseReason && <Row label="Pause reason" value={state.pauseReason} />}
           </dl>

@@ -49,7 +49,7 @@ export async function buildKalshiMarketsScanResponse(): Promise<KalshiMarketsLis
     kalshiMarketsReturnedRaw: 0,
     first20MarketTitles: [] as string[],
     first20MarketTickers: [] as string[],
-    oddsEdgeStatus: readiness.oddsConfigured ? "optional — not run" : "optional — key missing",
+    oddsEdgeStatus: readiness.oddsConfigured ? "ODDS_OPTIONAL_NOT_RUN" : "KALSHI_ONLY_READY",
     oddsUsed: false,
   };
 

@@ -72,9 +72,16 @@ export async function buildPageProviderStatus(): Promise<PageProviderStatus> {
     nextAction = "Test production Kalshi pair in Settings → API Keys";
   }
 
+  const kalshiReady =
+    keyPairPassed &&
+    health.kalshiExchangeStatus === "TRADING_ACTIVE" &&
+    health.kalshiBalanceStatus === "KALSHI_BALANCE_OK";
+
   const oddsEdgeStatus = readiness.oddsConfigured
-    ? "optional — not run"
-    : "optional — key missing";
+    ? "ODDS_OPTIONAL_NOT_RUN"
+    : kalshiReady
+      ? "KALSHI_ONLY_READY"
+      : "ODDS_OPTIONAL_NOT_RUN";
 
   return {
     kalshiAuth: health.kalshiAuthStatus,

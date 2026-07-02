@@ -22,11 +22,12 @@ export function ProviderStatusBar() {
           exchange: providers?.kalshiExchangeStatus ?? "—",
           balance: providers?.kalshiBalanceStatus ?? "—",
           odds:
-            odds?.status === "USABLE"
-              ? "USABLE"
+            providers?.oddsEdgeStatus ??
+            (odds?.status === "USABLE"
+              ? "ODDS_EDGE_USABLE"
               : odds?.status === "NOT_RUN"
-                ? "optional / not run"
-                : odds?.failureReason ?? odds?.authStatus ?? "—",
+                ? "ODDS_OPTIONAL_NOT_RUN"
+                : odds?.failureReason ?? odds?.authStatus ?? "—"),
         });
       })
       .catch(() => {});

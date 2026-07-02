@@ -210,6 +210,15 @@ export async function buildProviderHealthReport(options?: { probeOdds?: boolean 
     : "UNREACHABLE";
   const oddsConfigured = readiness.oddsConfigured;
   const oddsUsable = oddsDiagnostics.status === "USABLE";
+  const oddsEdgeStatus = oddsUsable
+    ? "ODDS_EDGE_USABLE"
+    : options?.probeOdds
+      ? "ODDS_EDGE_NOT_RUN"
+      : oddsConfigured
+        ? "ODDS_OPTIONAL_NOT_RUN"
+        : keyPairPassed && balance.ok
+          ? "KALSHI_ONLY_READY"
+          : "ODDS_OPTIONAL_NOT_RUN";
   const scoreAvailability = "UNCONFIRMED — SCORE_COVERAGE_UNSUPPORTED";
 
   let executionReadiness: ProviderHealthColor = "RED";
@@ -230,6 +239,7 @@ export async function buildProviderHealthReport(options?: { probeOdds?: boolean 
     kalshiAccountStatus: balance.ok ? "ACCOUNT_OK" : kalshiBalanceStatus,
     kalshiWebSocketStatus: "DISCONNECTED",
     kalshiOrderbookAvailability: exchange.ok ? "REST_AVAILABLE" : "UNAVAILABLE",
+    oddsEdgeStatus,
     oddsApiQuota: oddsDiagnostics.quota,
     oddsApiOddsFreshness: oddsUsable ? "USABLE" : "NOT_USABLE",
     oddsApiScoreAvailability: scoreAvailability,

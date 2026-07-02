@@ -1,30 +1,10 @@
 import type { RankedKalshiMarket } from "@/lib/core/types";
+import { formatDiagnosticText, formatLabelList } from "@/lib/utils/diagnostic-text";
 import { EmptyState } from "./EmptyState";
 import { StatusBadge } from "./StatusBadge";
 
-function asText(value: unknown): string {
-  if (value == null) return "—";
-  if (typeof value === "string") return value;
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  if (Array.isArray(value)) {
-    return value.map((item) => asText(item)).join(", ");
-  }
-  if (typeof value === "object") {
-    try {
-      return JSON.stringify(value);
-    } catch {
-      return "—";
-    }
-  }
-  return String(value);
-}
-
-function asLabelArray(value: unknown): string[] {
-  if (Array.isArray(value)) return value.map((item) => asText(item)).filter(Boolean);
-  if (value == null) return [];
-  const text = asText(value);
-  return text === "—" ? [] : [text];
-}
+const asText = formatDiagnosticText;
+const asLabelArray = formatLabelList;
 
 function money(n: unknown): string {
   const num = typeof n === "number" ? n : Number.parseFloat(asText(n));

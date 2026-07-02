@@ -1,6 +1,6 @@
 import "server-only";
 
-import { buildProviderHealthReport } from "@/lib/server/providers/provider-health";
+import { buildSharedProviderStatus, buildProviderHealthReport } from "@/lib/server/providers/provider-health";
 import { getKeyReadinessReport } from "@/lib/server/keys/key-service";
 import { buildKalshiMarketsResponse } from "@/lib/server/opportunities/opportunity-service";
 
@@ -40,6 +40,8 @@ export async function buildPageProviderStatus(): Promise<PageProviderStatus> {
         ? "NOT_RUN"
         : "KALSHI_MARKETS_EMPTY";
 
+  const shared = await buildSharedProviderStatus({ kalshiMarketScanStatus });
+
   const providersReady =
     kalshiMarketsOk ||
     (readiness.kalshiProdConfigured && keyPairPassed);
@@ -72,23 +74,14 @@ export async function buildPageProviderStatus(): Promise<PageProviderStatus> {
     nextAction = "Test production Kalshi pair in Settings → API Keys";
   }
 
-  const kalshiReady =
-    keyPairPassed &&
-    health.kalshiExchangeStatus === "TRADING_ACTIVE" &&
-    health.kalshiBalanceStatus === "KALSHI_BALANCE_OK";
-
-  const oddsEdgeStatus = readiness.oddsConfigured
-    ? "ODDS_OPTIONAL_NOT_RUN"
-    : kalshiReady
-      ? "KALSHI_ONLY_READY"
-      : "ODDS_OPTIONAL_NOT_RUN";
+  const oddsEdgeStatus = shared.oddsEdgeStatus;
 
   return {
-    kalshiAuth: health.kalshiAuthStatus,
-    kalshiKeyPairStatus: health.kalshiKeyPairStatus,
-    kalshiExchangeStatus: health.kalshiExchangeStatus,
-    kalshiBalanceStatus: health.kalshiBalanceStatus,
-    kalshiMarketScanStatus,
+    kalshiAuth: shared.kalshiAuthStatus,
+    kalshiKeyPairStatus: shared.kalshiKeyPairStatus,
+    kalshiExchangeStatus: shared.kalshiExchangeStatus,
+    kalshiBalanceStatus: shared.kalshiBalanceStatus,
+    kalshiMarketScanStatus: shared.kalshiMarketScanStatus,
     kalshiMode: health.kalshiMode,
     oddsEdgeStatus,
     providersReady,

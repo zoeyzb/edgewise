@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   formatDiagnosticText,
   formatLabelList,
+  safeJoin,
 } from "../../src/lib/utils/diagnostic-text.js";
 import { rankKalshiMarkets } from "../../src/lib/server/opportunities/kalshi-market-ranking.js";
 import type { KalshiMarketSummary } from "../../src/lib/core/contracts.js";
@@ -26,6 +27,14 @@ describe("Kalshi markets query", () => {
 });
 
 describe("diagnostic renderer safety", () => {
+  it("safeJoin handles null, string, number, object, and array", () => {
+    assert.equal(safeJoin(null), "");
+    assert.equal(safeJoin("hello"), "hello");
+    assert.equal(safeJoin(42), "42");
+    assert.equal(safeJoin(["a", "b"]), "a · b");
+    assert.equal(safeJoin({ x: 1 }), '{"x":1}');
+  });
+
   it("formatDiagnosticText handles null, string, number, object, and array", () => {
     assert.equal(formatDiagnosticText(null), "—");
     assert.equal(formatDiagnosticText("hello"), "hello");
@@ -46,7 +55,7 @@ describe("diagnostic renderer safety", () => {
       join(ROOT, "src/components/KalshiMarketsTable.tsx"),
       "utf8"
     );
-    assert.match(content, /formatDiagnosticText/);
+    assert.match(content, /safeJoin|formatDiagnosticText/);
     assert.match(content, /formatLabelList/);
     assert.doesNotMatch(content, /m\.labels\.map/);
   });
@@ -84,7 +93,7 @@ describe("Kalshi-only dashboard does not require Odds API", () => {
     );
     assert.match(content, /buildProviderHealthReport\(\)/);
     assert.doesNotMatch(content, /probeOdds:\s*true/);
-    assert.match(content, /ODDS_OPTIONAL_NOT_RUN|KALSHI_ONLY_READY/);
+    assert.match(content, /buildSharedProviderStatus/);
   });
 
   it("health route does not probe Odds on page load", () => {
@@ -121,13 +130,19 @@ describe("Account uses real Kalshi balance source", () => {
     assert.match(content, /live\?\.bankroll/);
   });
 
-  it("buildAccountResponseFromProviders reads Kalshi portfolio balance", () => {
+  it("account page does not fall back to PLACEHOLDER_UI_ONLY bankroll", () => {
+    const content = readFileSync(join(ROOT, "app/(dashboard)/account/page.tsx"), "utf8");
+    assert.doesNotMatch(content, /PLACEHOLDER_UI_ONLY/);
+    assert.doesNotMatch(content, /buildAccountResponse\(\)/);
+  });
+
+  it("buildSharedProviderStatus is the shared provider source", () => {
     const content = readFileSync(
       join(ROOT, "src/lib/server/providers/provider-health.ts"),
       "utf8"
     );
-    assert.match(content, /buildPortfolioResponse/);
-    assert.match(content, /LIVE_PROVIDER_DATA/);
-    assert.match(content, /KALSHI_BALANCE/);
+    assert.match(content, /buildSharedProviderStatus/);
+    assert.match(content, /KALSHI_KEY_PAIR_PASSED/);
+    assert.match(content, /ODDS_OPTIONAL_NOT_RUN/);
   });
 });

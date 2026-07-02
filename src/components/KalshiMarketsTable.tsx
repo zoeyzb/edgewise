@@ -1,5 +1,5 @@
 import type { RankedKalshiMarket } from "@/lib/core/types";
-import { formatDiagnosticText, formatLabelList } from "@/lib/utils/diagnostic-text";
+import { formatDiagnosticText, formatLabelList, safeJoin } from "@/lib/utils/diagnostic-text";
 import { EmptyState } from "./EmptyState";
 import { StatusBadge } from "./StatusBadge";
 
@@ -123,7 +123,7 @@ export function KalshiMarketsTable({
                     </div>
                   </td>
                   <td className="px-3 py-4 text-xs leading-relaxed text-edge-muted break-words whitespace-normal">
-                    {asText(m.rankReason)}
+                    {safeJoin(m.rankReason) || asText(m.rankReason)}
                   </td>
                 </tr>
               );

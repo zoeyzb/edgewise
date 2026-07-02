@@ -74,4 +74,16 @@ describe("kalshi market ranking", () => {
 
     assert.equal(isKalshiComboMarket(market), false);
   });
+
+  it("classifies MVE ticker with legs as combo", () => {
+    const market: KalshiMarketSummary = {
+      ticker: "KXMVE-MULTIGAME-TEST",
+      title: "Leg A, Leg B",
+      status: "active",
+      mve_collection_ticker: "KXMVE-COLLECTION",
+      mve_selected_legs: [{ ticker: "LEG-A" }, { ticker: "LEG-B" }],
+    };
+
+    assert.equal(isKalshiComboMarket(market), true);
+  });
 });

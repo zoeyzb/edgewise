@@ -130,6 +130,46 @@ async function buildOddsDiagnostics() {
   };
 }
 
+export interface SharedProviderStatus {
+  kalshiKeyPairStatus: string;
+  kalshiExchangeStatus: string;
+  kalshiBalanceStatus: string;
+  kalshiMarketScanStatus: string;
+  oddsEdgeStatus: string;
+  kalshiBalance: number | null;
+  kalshiAuthStatus: string;
+}
+
+export async function buildSharedProviderStatus(input?: {
+  kalshiMarketScanStatus?: string;
+}): Promise<SharedProviderStatus> {
+  const [health, readiness] = await Promise.all([
+    buildProviderHealthReport(),
+    getKeyReadinessReport(),
+  ]);
+  const keyPairPassed = readiness.kalshiPairs.prod.pairStatus === "KALSHI_AUTH_TEST_PASSED";
+  const kalshiReady =
+    keyPairPassed &&
+    health.kalshiExchangeStatus === "TRADING_ACTIVE" &&
+    health.kalshiBalanceStatus === "KALSHI_BALANCE_OK";
+
+  return {
+    kalshiKeyPairStatus: health.kalshiKeyPairStatus,
+    kalshiExchangeStatus: health.kalshiExchangeStatus,
+    kalshiBalanceStatus: health.kalshiBalanceStatus,
+    kalshiMarketScanStatus: input?.kalshiMarketScanStatus ?? "NOT_RUN",
+    oddsEdgeStatus:
+      health.oddsEdgeStatus ??
+      (readiness.oddsConfigured
+        ? "ODDS_OPTIONAL_NOT_RUN"
+        : kalshiReady
+          ? "KALSHI_ONLY_READY"
+          : "ODDS_OPTIONAL_NOT_RUN"),
+    kalshiBalance: health.kalshi?.balance?.balance ?? null,
+    kalshiAuthStatus: health.kalshiAuthStatus,
+  };
+}
+
 export async function buildProviderHealthReport(options?: { probeOdds?: boolean }) {
   const config = getAppConfigReport();
   const appState = await getAppState();

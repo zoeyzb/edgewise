@@ -58,8 +58,7 @@ export function KalshiMarketsTabs({
     if (tab === "all") return markets;
     const clean = markets.filter(isCleanTabMarket);
     if (clean.length > 0) return clean;
-    const reviewable = reviewableMarkets(markets);
-    return reviewable.length > 0 ? reviewable : markets;
+    return reviewableMarkets(markets).filter((m) => !m.isCombo);
   }, [markets, tab]);
 
   const cleanUsesFallback = tab === "clean" && counts.clean === 0 && filtered.length > 0;
@@ -72,7 +71,7 @@ export function KalshiMarketsTabs({
             item.id === "clean"
               ? counts.clean > 0
                 ? counts.clean
-                : counts.reviewable || counts.all
+                : counts.reviewable
               : counts[item.id];
           return (
             <button

@@ -1,5 +1,18 @@
 /** Safe string formatting for table cells and diagnostics — never throws on bad input. */
 
+export function safeJoin(value: unknown): string {
+  if (Array.isArray(value)) return value.filter(Boolean).join(" · ");
+  if (value == null) return "";
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "";
+    }
+  }
+  return String(value);
+}
+
 export function formatDiagnosticText(value: unknown): string {
   if (value == null) return "—";
   if (typeof value === "string") return value;

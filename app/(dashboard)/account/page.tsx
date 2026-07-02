@@ -1,23 +1,18 @@
 import { PageHeader } from "@/components/PageHeader";
 import { StakePanel } from "@/components/StakePanel";
 import { DataSourceBar } from "@/components/DataSourceBar";
-import { buildAccountResponse } from "@/lib/api/responses";
 import { buildAccountResponseFromProviders } from "@/lib/server/providers/provider-health";
 
 export const dynamic = "force-dynamic";
 
 export default async function AccountPage() {
-  const [live, account] = await Promise.all([
-    buildAccountResponseFromProviders(),
-    buildAccountResponse(),
-  ]);
+  const live = await buildAccountResponseFromProviders();
 
-  const dataLabel = live?.dataLabel ?? account.dataLabel ?? "PLACEHOLDER_UI_ONLY";
-  const bankroll = live?.bankroll ?? account.bankroll;
+  const dataLabel = live?.dataLabel ?? "PROVIDER_NOT_CONFIGURED";
   const connected = live?.bankroll?.label === "KALSHI_BALANCE";
   const bankrollValue =
-    bankroll?.value != null && typeof bankroll.value === "number"
-      ? `$${bankroll.value.toFixed(2)}`
+    connected && live?.bankroll?.value != null && typeof live.bankroll.value === "number"
+      ? `$${live.bankroll.value.toFixed(2)}`
       : "—";
 
   return (
@@ -45,7 +40,7 @@ export default async function AccountPage() {
             <p className="text-xs text-edge-muted mt-1">
               {connected
                 ? "Sanitized Kalshi production balance"
-                : bankroll?.note ?? "Placeholder bankroll for stake math"}
+                : "Configure production Kalshi API + private key in Settings"}
             </p>
           </div>
           <div>

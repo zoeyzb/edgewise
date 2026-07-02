@@ -30,12 +30,14 @@ export function isKalshiComboMarket(market: KalshiMarketSummary): boolean {
   const hasMveLegs =
     Array.isArray(market.mve_selected_legs) && market.mve_selected_legs.length >= 2;
   const hasMultigameTicker = ticker.includes("MULTIGAME");
+  const hasMveTicker = ticker.includes("MVE");
   const hasComboMarketType =
     marketType.includes("multivariate") ||
     marketType.includes("combo") ||
     marketType.includes("parlay");
 
   if (hasMultigameTicker) return true;
+  if (hasMveTicker && (hasMveCollection || hasMveLegs)) return true;
   if (hasMveCollection && hasMveLegs) return true;
   if (hasComboMarketType && (hasMveCollection || hasMveLegs)) return true;
 

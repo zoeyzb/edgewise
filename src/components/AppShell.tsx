@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { APP_NAME, NAV_ITEMS, SETTINGS_NAV } from "@/lib/core/constants";
+import { useState } from "react";
+import { APP_NAME, ADVANCED_NAV, NAV_ITEMS } from "@/lib/core/constants";
 import { ModeSelector } from "./ModeSelector";
 import { ProviderStatusBar } from "./ProviderStatusBar";
 import { KillSwitchControl } from "./KillSwitchControl";
@@ -11,6 +12,9 @@ import { cn } from "@/lib/utils/cn";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const [advancedOpen, setAdvancedOpen] = useState(
+    ADVANCED_NAV.some((item) => pathname === item.href)
+  );
 
   return (
     <div className="flex min-h-screen">
@@ -18,13 +22,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="border-b border-edge-border px-4 py-5">
           <p className="text-[10px] uppercase tracking-widest text-edge-muted">Kalshi Edge</p>
           <p className="text-lg font-semibold">{APP_NAME}</p>
+          <p className="mt-1 text-[10px] text-edge-muted">Production-first</p>
         </div>
         <nav className="flex-1 overflow-y-auto p-3">
           <NavSection items={NAV_ITEMS} pathname={pathname} />
-          <p className="mb-2 mt-6 px-2 text-[10px] uppercase tracking-widest text-edge-muted">
-            Settings
-          </p>
-          <NavSection items={SETTINGS_NAV} pathname={pathname} />
+          <button
+            type="button"
+            onClick={() => setAdvancedOpen((v) => !v)}
+            className="mt-6 flex w-full items-center justify-between px-2 text-[10px] uppercase tracking-widest text-edge-muted hover:text-slate-200"
+          >
+            <span>Advanced</span>
+            <span>{advancedOpen ? "−" : "+"}</span>
+          </button>
+          {advancedOpen ? (
+            <div className="mt-2">
+              <NavSection items={ADVANCED_NAV} pathname={pathname} />
+            </div>
+          ) : null}
         </nav>
       </aside>
 
@@ -37,8 +51,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </div>
               <ModeSelector />
               <div className="flex items-center gap-2">
-                <StatusBadge variant="muted">Bankroll: PLACEHOLDER</StatusBadge>
-                <StatusBadge variant="warn">Risk: 0.5% default</StatusBadge>
+                <StatusBadge variant="muted">Production default</StatusBadge>
               </div>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2">

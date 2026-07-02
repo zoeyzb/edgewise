@@ -51,7 +51,7 @@ export interface AutoRiskLimits {
 
 export const AUTO_RISK_LIMITS: Record<"TINY_LIVE_AUTO" | "STANDARD_AUTO", AutoRiskLimits> = {
   TINY_LIVE_AUTO: {
-    maxStakePercent: 0.25,
+    maxStakePercent: 10,
     maxDailyLossPercent: 1,
     maxDailyExposurePercent: 2,
     maxOpenTrades: 1,
@@ -64,8 +64,8 @@ export const AUTO_RISK_LIMITS: Record<"TINY_LIVE_AUTO" | "STANDARD_AUTO", AutoRi
     minProfitPriorityScore: 55,
   },
   STANDARD_AUTO: {
-    maxStakePercent: 1,
-    minStakePercent: 0.5,
+    maxStakePercent: 15,
+    minStakePercent: 2,
     maxDailyLossPercent: 2,
     maxDailyExposurePercent: 6,
     maxOpenTrades: 3,
@@ -80,7 +80,7 @@ export const AUTO_RISK_LIMITS: Record<"TINY_LIVE_AUTO" | "STANDARD_AUTO", AutoRi
 };
 
 export const PAPER_AUTO_LIMITS: AutoRiskLimits = {
-  maxStakePercent: 0.5,
+  maxStakePercent: 10,
   maxDailyLossPercent: 3,
   maxDailyExposurePercent: 10,
   maxOpenTrades: 5,

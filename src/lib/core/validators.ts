@@ -82,6 +82,8 @@ export function validateMarketsResponse(payload: unknown):
       ticker: item.ticker,
       event_ticker:
         typeof item.event_ticker === "string" ? item.event_ticker : undefined,
+      series_ticker:
+        typeof item.series_ticker === "string" ? item.series_ticker : undefined,
       title: typeof item.title === "string" ? item.title : undefined,
       status: typeof item.status === "string" ? item.status : undefined,
       yes_bid_dollars:

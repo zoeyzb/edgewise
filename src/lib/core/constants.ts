@@ -11,8 +11,8 @@ export const DEFAULT_SYSTEM_STATUS: SystemStatus = {
 };
 
 export const RISK_DEFAULTS: RiskDefaults = {
-  maxManualStakePercent: 1,
-  conservativeStakePercent: 0.5,
+  maxManualStakePercent: 25,
+  conservativeStakePercent: 10,
   maxDailyRealizedLossPercent: 3,
   maxDailyExposurePercent: 10,
   maxExposurePerGamePercent: 3,
@@ -23,9 +23,14 @@ export const RISK_DEFAULTS: RiskDefaults = {
 
 export const DEFAULT_STAKE_SETTINGS: StakeSettings = {
   mode: "FIXED_PERCENT_STAKE",
-  fixedDollarAmount: 10,
-  fixedPercentAmount: 0.5,
-  userMaxStake: 50,
+  manualStakeMode: "PERCENT",
+  fixedDollarAmount: 0,
+  fixedPercentAmount: 10,
+  autoFixedDollarAmount: 0,
+  autoFixedPercentAmount: 10,
+  autoMaxDollarAmount: 0,
+  autoMaxPercentAmount: 15,
+  userMaxStake: 500,
   dailyMaxLoss: 3,
   sessionMaxLoss: 2,
   maxOpenExposure: 10,
@@ -63,20 +68,27 @@ export const BLOCK_CODES = {
 
 export const NAV_ITEMS = [
   { href: "/", label: "Dashboard" },
-  { href: "/live-games", label: "Live Games" },
   { href: "/opportunities", label: "Opportunities" },
+  { href: "/auto-trade", label: "Auto" },
+  { href: "/account", label: "Account" },
+  { href: "/settings/keys", label: "Settings" },
+] as const;
+
+export const ADVANCED_NAV = [
+  { href: "/live-games", label: "Live Games" },
   { href: "/best-bets", label: "Best Bets" },
   { href: "/fast-money", label: "Fast Money" },
   { href: "/high-margin", label: "High Margin" },
   { href: "/totals-watchlist", label: "Totals Watchlist" },
-  { href: "/auto-trade", label: "Auto Trade" },
   { href: "/tracker", label: "Tracker" },
   { href: "/profitability", label: "Profitability" },
-  { href: "/account", label: "Account" },
   { href: "/risk", label: "Risk" },
   { href: "/health", label: "Health" },
   { href: "/logs", label: "Logs" },
   { href: "/backtesting-status", label: "Backtesting" },
+  { href: "/settings/stake", label: "Stake" },
+  { href: "/settings/risk", label: "Risk Limits" },
+  { href: "/settings/providers", label: "Providers" },
 ] as const;
 
 export const SETTINGS_NAV = [

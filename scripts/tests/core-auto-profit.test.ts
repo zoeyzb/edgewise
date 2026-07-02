@@ -30,6 +30,7 @@ describe("Auto per-trade validation", () => {
   const stake = {
     userRequestedStake: 5,
     aiRecommendedStake: 5,
+    suggestedStake: 5,
     finalAllowedStake: 5,
     maxLoss: 5,
     expectedDollarProfit: 2,
@@ -89,13 +90,13 @@ describe("Auto per-trade validation", () => {
 describe("Auto risk limits", () => {
   it("Tiny Live Auto limits", () => {
     const limits = getAutoLimits("TINY_LIVE_AUTO");
-    assert.equal(limits.maxStakePercent, 0.25);
+    assert.equal(limits.maxStakePercent, 10);
     assert.equal(limits.maxOpenTrades, 1);
   });
 
   it("Standard Auto limits", () => {
     const limits = getAutoLimits("STANDARD_AUTO");
-    assert.equal(limits.maxStakePercent, 1);
+    assert.equal(limits.maxStakePercent, 15);
     assert.equal(limits.maxOpenTrades, 3);
   });
 

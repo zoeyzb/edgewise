@@ -64,8 +64,13 @@ export interface SystemStatus {
 
 export interface StakeSettings {
   mode: StakeMode;
+  manualStakeMode: "DOLLAR" | "PERCENT" | "SUGGESTED";
   fixedDollarAmount: number;
   fixedPercentAmount: number;
+  autoFixedDollarAmount: number;
+  autoFixedPercentAmount: number;
+  autoMaxDollarAmount: number;
+  autoMaxPercentAmount: number;
   userMaxStake: number;
   dailyMaxLoss: number;
   sessionMaxLoss: number;
@@ -190,11 +195,15 @@ export interface OpportunityRankFactors {
 export interface StakeDecision {
   userRequestedStake: number;
   aiRecommendedStake: number;
+  suggestedStake: number;
   finalAllowedStake: number;
   maxLoss: number;
   expectedDollarProfit: number;
   decision: "ALLOWED" | "REDUCED" | "BLOCKED";
   reason: string;
+  confidenceLevel?: string;
+  autoAllowed?: boolean;
+  manualOnly?: boolean;
 }
 
 export interface ValidationGateResult {
@@ -497,8 +506,14 @@ export interface ScoredOpportunity {
   profitPriorityScore: number;
   userRequestedStake: number;
   aiRecommendedStake: number;
+  suggestedStake: number;
   finalAllowedStake: number;
   maxLoss: number;
+  stakeDecision: "ALLOWED" | "REDUCED" | "BLOCKED";
+  stakeReason: string;
+  confidenceLevel: string;
+  autoAllowed: boolean;
+  manualOnly: boolean;
   state: OpportunityDecisionState;
   reason: string;
   highMarginStatus: HighMarginStatus;
@@ -526,11 +541,57 @@ export interface TotalsWatchEntry {
 }
 
 export interface OpportunityListResponse {
-  dataLabel: "REAL_PROVIDER_DATA" | "PROVIDER_NOT_CONFIGURED" | "NO_MATCHES_FOUND";
+  dataLabel:
+    | "REAL_PROVIDER_DATA"
+    | "PROVIDER_NOT_CONFIGURED"
+    | "NO_MATCHES_FOUND"
+    | "KALSHI_QUERY_INVALID"
+    | "KALSHI_QUERY_RETURNED_ZERO"
+    | "KALSHI_MARKETS_FOUND"
+    | "KALSHI_SPORTS_MARKETS_FOUND"
+    | "KALSHI_MARKETS_FOUND_BUT_CLASSIFIER_REJECTED_ALL"
+    | "ODDS_NOT_USED_KALSHI_FIRST";
   providerStatus: string;
   message: string;
   scannedAt: string;
   items: ScoredOpportunity[];
+  scanDiagnostics?: {
+    environment: "prod";
+    phaseStatus?: string;
+    phaseStatuses?: string[];
+    kalshiRequestPath?: string;
+    kalshiQueryUsed: {
+      limit: number;
+      status?: string;
+      maxMarketsChecked?: number;
+      maxPages?: number;
+      pagesFetched?: number;
+    };
+    kalshiFetchError?: string | null;
+    kalshiActiveMarkets: number;
+    kalshiSportsMarkets: number;
+    first20MarketTitles?: string[];
+    kalshiSportsMarketsList?: Array<{
+      ticker: string;
+      eventTicker: string | null;
+      title: string;
+      status: string | null;
+      volumeFp: string | null;
+      openInterestFp: string | null;
+      category: string;
+      rejectReason: string | null;
+      matchedHint?: string | null;
+    }>;
+    matchedMarkets: number;
+    oddsUsed?: boolean;
+    oddsSportsScanned: string[];
+    oddsEventsReturned: number;
+    oddsBookmakersReturned: number;
+    unsupportedSports: string[];
+    blockReasonCounts: Record<string, number>;
+    primaryBlockReason: string | null;
+    rejectedMarkets?: Array<{ ticker: string; title: string; sportKey: string | null; reason: string }>;
+  };
 }
 
 export interface RiskExposureSnapshot {

@@ -49,7 +49,11 @@ async function writeJson<T>(file: string, data: T) {
 }
 
 export async function getAppState(): Promise<StoredAppState> {
-  return readJson(STATE_FILE, DEFAULT_APP_STATE);
+  const raw = await readJson(STATE_FILE, DEFAULT_APP_STATE);
+  return {
+    ...raw,
+    stakeSettings: { ...DEFAULT_STAKE_SETTINGS, ...raw.stakeSettings },
+  };
 }
 
 export async function updateAppState(

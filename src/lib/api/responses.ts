@@ -35,14 +35,12 @@ export async function buildHealthSnapshot(): Promise<HealthSnapshot> {
     appStatus: "ACTIVE",
     providerKeyStatus: keys.length > 0 ? "PARTIAL" : "NOT_CONFIGURED",
     secretSafetyStatus,
-    kalshiStatus: readiness.kalshiDemoConfigured || readiness.kalshiProdConfigured
-      ? "KEYS_STORED_SERVER_SIDE"
+    kalshiStatus: readiness.kalshiProdConfigured
+      ? "PROD_KEYS_CONFIGURED"
       : "PROVIDER_NOT_CONFIGURED",
-    oddsApiStatus: readiness.oddsConfigured
-      ? "KEY_STORED_SERVER_SIDE"
-      : "PROVIDER_NOT_CONFIGURED",
+    oddsApiStatus: "CHECK_HEALTH_FOR_USABILITY",
     manualExecution:
-      readiness.kalshiProdConfigured || readiness.kalshiDemoConfigured
+      readiness.kalshiProdConfigured && readiness.oddsConfigured
         ? "READY_WHEN_VALIDATION_BUILT"
         : "PROVIDER_NOT_CONFIGURED",
     autoMode: autoSelected ? "SELECTED" : "SELECTABLE",
@@ -139,8 +137,14 @@ export async function buildAccountResponse() {
       profitPriorityScore: 0,
       userRequestedStake: 0,
       aiRecommendedStake: 0,
+      suggestedStake: 0,
       finalAllowedStake: 0,
       maxLoss: 0,
+      stakeDecision: "BLOCKED",
+      stakeReason: "preview",
+      confidenceLevel: "normal validated edge",
+      autoAllowed: false,
+      manualOnly: true,
       state: "UNCONFIRMED",
       reason: "preview",
       highMarginStatus: "NOT_APPLICABLE",
@@ -240,8 +244,14 @@ export async function buildRiskResponse() {
       profitPriorityScore: 0,
       userRequestedStake: 0,
       aiRecommendedStake: 0,
+      suggestedStake: 0,
       finalAllowedStake: 0,
       maxLoss: 0,
+      stakeDecision: "BLOCKED",
+      stakeReason: "preview",
+      confidenceLevel: "normal validated edge",
+      autoAllowed: false,
+      manualOnly: true,
       state: "UNCONFIRMED",
       reason: "preview only",
       highMarginStatus: "NOT_APPLICABLE",

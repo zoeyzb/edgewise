@@ -22,11 +22,13 @@ import {
 } from "@/lib/core/orderbook";
 import { computeNoVigFairProbability, extractH2hBooks, NO_VIG_UNAVAILABLE } from "@/lib/core/probability";
 import { computeProfitPriorityScore } from "@/lib/core/profit-priority";
+import { computeOpportunityStake, confidenceLabel } from "@/lib/core/staking";
 import type { KalshiExecutableOrderbook } from "@/lib/core/contracts";
 import type {
   EventMatchCandidate,
   OpportunityDecisionState,
   ScoredOpportunity,
+  StakeSettings,
 } from "@/lib/core/types";
 
 const DEFAULT_SLIPPAGE = 0.005;
@@ -53,6 +55,9 @@ export interface BuildOpportunityInput {
   scoreFresh?: boolean;
   oddsFresh?: boolean;
   requestedStake?: number;
+  oddsMarketKey?: string;
+  bankroll?: number;
+  stakeSettings?: StakeSettings;
 }
 
 export function buildScoredOpportunity(input: BuildOpportunityInput): ScoredOpportunity {
@@ -92,7 +97,7 @@ export function buildScoredOpportunity(input: BuildOpportunityInput): ScoredOppo
     kalshiEventTicker: input.kalshiEventTicker,
     kalshiMarketTicker: input.kalshiMarketTicker,
     kalshiMarketTitle: input.kalshiMarketTitle,
-    oddsMarketKey: "h2h",
+    oddsMarketKey: input.oddsMarketKey ?? "h2h",
     kalshiEvent,
     oddsEvent,
     isLive: input.isLive ?? false,
@@ -113,6 +118,7 @@ export function buildScoredOpportunity(input: BuildOpportunityInput): ScoredOppo
   });
 
   const stake = input.requestedStake ?? DEFAULT_STAKE;
+  const bankroll = input.bankroll ?? 1000;
   const fairProb =
     noVig.available && noVig.fairProbability != null
       ? input.side === "YES"
@@ -258,9 +264,105 @@ export function buildScoredOpportunity(input: BuildOpportunityInput): ScoredOppo
     reason = highMargin.reason;
   }
 
-  const aiRecommendedStake = Math.min(stake, liquidity.fillableNotional * 0.5);
-  const finalAllowedStake = state === "BETTABLE" ? Math.min(stake, aiRecommendedStake) : 0;
+  const stakeDecision = input.stakeSettings
+    ? computeOpportunityStake({
+        bankroll,
+        stakeSettings: input.stakeSettings,
+        opportunity: {
+          id: input.id,
+          sport: input.sportKey,
+          league: input.league,
+          game: `${awayTeam} @ ${homeTeam}`,
+          teams: { home: homeTeam, away: awayTeam },
+          startTime: commenceTime,
+          liveStatus: input.isLive ? "LIVE" : commenceTime && Date.parse(commenceTime) > Date.now() ? "PRE_GAME" : "UNKNOWN",
+          kalshiEvent: input.kalshiEventTicker,
+          kalshiMarket: input.kalshiMarketTitle,
+          kalshiTicker: input.kalshiMarketTicker,
+          sportsbookEvent: oddsEventId,
+          sportsbookMarket: input.oddsMarketKey ?? "h2h",
+          side: input.side,
+          matchConfidence: matchResult.eventMatch.confidence,
+          settlementConfidence: matchResult.settlement.exact
+            ? "EXACT"
+            : matchResult.settlement.status === "MISMATCH"
+              ? "MISMATCH"
+              : "UNCONFIRMED",
+          marketTypeLevel: matchResult.marketTypeLevel,
+          scopePeriod: matchResult.settlement.scope,
+          overtimeTreatment: matchResult.settlement.overtimeHandling,
+          currentScore: input.currentScore ?? null,
+          clockPeriod: input.clockPeriod ?? null,
+          executableKalshiAsk: executableAsk,
+          orderbookFreshness: obMetrics.freshnessState,
+          oddsFreshness: input.oddsFresh === false ? "STALE" : "FRESH",
+          scoreFreshness: input.isLive ? (input.scoreFresh ? "FRESH" : "STALE") : "N/A",
+          noVigFairProbability: fairProb,
+          bookmakerCount: noVig.bookmakerCount,
+          sportsbookDisagreement: noVig.disagreement,
+          liquidity: liquidity.label,
+          fillableNotional: liquidity.fillableNotional,
+          edgeBreakdown: {
+            grossEdge: edgeBreakdown.grossEdge,
+            fees: edgeBreakdown.fees,
+            spread: edgeBreakdown.spread,
+            slippage: edgeBreakdown.slippage,
+            staleDataBuffer: edgeBreakdown.staleDataBuffer,
+            partialFillRisk: edgeBreakdown.partialFillRisk,
+            confidencePenalty: edgeBreakdown.confidencePenalty,
+            netEdge: edgeBreakdown.netEdge,
+            edgeTier: edgeBreakdown.edgeTier,
+            blockCode: edgeBreakdown.blockCode,
+          },
+          expectedDollarProfit,
+          expectedProfitPerSecond,
+          expectedProfitPerMinute,
+          edgeSurvivalConfidence: edgeSurvival.confidence,
+          fillProbability: liquidity.fillProbability,
+          edgeQualityScore,
+          moneyConfidenceScore,
+          profitPriorityScore,
+          userRequestedStake: stake,
+          aiRecommendedStake: 0,
+          suggestedStake: 0,
+          finalAllowedStake: 0,
+          maxLoss: 0,
+          stakeDecision: "BLOCKED",
+          stakeReason: "",
+          confidenceLevel: "",
+          autoAllowed: false,
+          manualOnly: true,
+          state,
+          reason,
+          highMarginStatus: highMargin.status,
+          valueBucket,
+          executeReadiness: state === "BETTABLE" ? "PER_TRADE_VALIDATION_REQUIRED" : "BLOCKED",
+          dataLabel: "REAL_PROVIDER_DATA",
+        },
+      })
+    : null;
+
+  const resolvedStake = stakeDecision ?? {
+    userRequestedStake: stake,
+    aiRecommendedStake: Math.min(stake, liquidity.fillableNotional * 0.5),
+    suggestedStake: Math.min(stake, liquidity.fillableNotional * 0.5),
+    finalAllowedStake: state === "BETTABLE" ? Math.min(stake, liquidity.fillableNotional * 0.5) : 0,
+    maxLoss: state === "BETTABLE" ? Math.min(stake, liquidity.fillableNotional * 0.5) : 0,
+    expectedDollarProfit,
+    decision: "ALLOWED" as const,
+    reason: "default stake",
+    confidenceLevel: "normal_validated",
+    autoAllowed: false,
+    manualOnly: true,
+  };
+
+  const finalAllowedStake =
+    state === "BETTABLE" ? resolvedStake.finalAllowedStake : 0;
   const maxLoss = finalAllowedStake;
+  const scaledProfit =
+    finalAllowedStake > 0 && stake > 0
+      ? (finalAllowedStake / stake) * expectedDollarProfit
+      : 0;
 
   return {
     id: input.id,
@@ -274,7 +376,7 @@ export function buildScoredOpportunity(input: BuildOpportunityInput): ScoredOppo
     kalshiMarket: input.kalshiMarketTitle,
     kalshiTicker: input.kalshiMarketTicker,
     sportsbookEvent: oddsEventId,
-    sportsbookMarket: "h2h",
+    sportsbookMarket: input.oddsMarketKey ?? "h2h",
     side: input.side,
     matchConfidence: matchResult.eventMatch.confidence,
     settlementConfidence: matchResult.settlement.exact
@@ -308,7 +410,7 @@ export function buildScoredOpportunity(input: BuildOpportunityInput): ScoredOppo
       edgeTier: edgeBreakdown.edgeTier,
       blockCode: edgeBreakdown.blockCode,
     },
-    expectedDollarProfit,
+    expectedDollarProfit: scaledProfit,
     expectedProfitPerSecond,
     expectedProfitPerMinute,
     edgeSurvivalConfidence: edgeSurvival.confidence,
@@ -316,10 +418,22 @@ export function buildScoredOpportunity(input: BuildOpportunityInput): ScoredOppo
     edgeQualityScore,
     moneyConfidenceScore,
     profitPriorityScore,
-    userRequestedStake: stake,
-    aiRecommendedStake,
+    userRequestedStake: resolvedStake.userRequestedStake,
+    aiRecommendedStake: resolvedStake.aiRecommendedStake,
+    suggestedStake: resolvedStake.suggestedStake ?? resolvedStake.aiRecommendedStake,
     finalAllowedStake,
     maxLoss,
+    stakeDecision: state === "BETTABLE" ? resolvedStake.decision : "BLOCKED",
+    stakeReason: resolvedStake.reason,
+    confidenceLevel:
+      typeof resolvedStake.confidenceLevel === "string" &&
+      ["risky_or_uncertain", "normal_validated", "strong_validated", "highest_confidence"].includes(
+        resolvedStake.confidenceLevel
+      )
+        ? confidenceLabel(resolvedStake.confidenceLevel as import("@/lib/core/staking").ConfidenceLevel)
+        : confidenceLabel("normal_validated"),
+    autoAllowed: resolvedStake.autoAllowed ?? false,
+    manualOnly: resolvedStake.manualOnly ?? true,
     state,
     reason,
     highMarginStatus: highMargin.status,

@@ -1,11 +1,16 @@
 import "server-only";
+
 import { getAppConfigReport } from "@/lib/core/config";
 import type { ProviderHealthColor } from "@/lib/core/contracts";
+import { ODDS_API_CONTRACT } from "@/lib/core/contracts";
 import { KalshiClient } from "@/lib/core/kalshi-client";
 import type { KalshiCredentials, KalshiEnvironment } from "@/lib/core/kalshi-auth";
 import { getOddsQuotaState, oddsApiClient } from "@/lib/core/odds-client";
+import { isAllowedOddsSportKey } from "@/lib/core/market-types";
 import { getDecryptedSecretsMap } from "@/lib/server/keys/key-store";
+import { getKeyReadinessReport } from "@/lib/server/keys/key-service";
 import { getAppState } from "@/lib/storage/store";
+import { listSupportedOddsSportKeys } from "@/lib/server/opportunities/sport-mapping";
 
 export async function resolveKalshiCredentials(
   environment: KalshiEnvironment
@@ -23,21 +28,121 @@ export async function resolveKalshiCredentials(
   return { apiKeyId, privateKeyPem, environment };
 }
 
+export async function resolveProductionKalshiClient(): Promise<{
+  client: KalshiClient;
+  creds: KalshiCredentials | null;
+  configured: boolean;
+}> {
+  const creds = await resolveKalshiCredentials("prod");
+  return {
+    creds,
+    configured: creds != null,
+    client: creds ? new KalshiClient(creds, "prod") : KalshiClient.withoutCredentials("prod"),
+  };
+}
+
+async function buildOddsDiagnostics() {
+  const sportsRes = await oddsApiClient.getSports();
+  const quota = getOddsQuotaState();
+
+  if (!sportsRes.ok) {
+    return {
+      status: "NOT_USABLE",
+      authStatus: sportsRes.error.category === "auth" ? "AUTH_FAILED" : "NOT_CONFIGURED",
+      quota,
+      sportsAvailable: 0,
+      sportsScanned: [] as string[],
+      eventsReturned: 0,
+      bookmakersReturned: 0,
+      usableMarkets: 0,
+      failureReason:
+        sportsRes.error.category === "auth"
+          ? "ODDS_API_AUTH_FAILED"
+          : sportsRes.error.category === "network"
+            ? "ODDS_API_NETWORK_ERROR"
+            : "ODDS_API_NOT_CONFIGURED",
+    };
+  }
+
+  const activeSports = sportsRes.data
+    .filter((s) => s.active)
+    .map((s) => s.key)
+    .filter((key) => isAllowedOddsSportKey(key));
+
+  let eventsReturned = 0;
+  let bookmakersReturned = 0;
+  let usableMarkets = 0;
+  const sportsScanned: string[] = [];
+  let failureReason: string | null = null;
+
+  for (const sportKey of activeSports.slice(0, 8)) {
+    const oddsRes = await oddsApiClient.getOdds(sportKey, {
+      regions: "us",
+      markets: "h2h",
+      oddsFormat: "american",
+    });
+    sportsScanned.push(sportKey);
+    if (!oddsRes.ok) {
+      failureReason = failureReason ?? "ODDS_API_FETCH_FAILED";
+      continue;
+    }
+    const events = oddsRes.data.filter((e) => typeof e === "object" && e !== null) as Record<
+      string,
+      unknown
+    >[];
+    eventsReturned += events.length;
+    if (events.length === 0) {
+      failureReason = failureReason ?? "ODDS_API_NO_EVENTS";
+      continue;
+    }
+    for (const event of events) {
+      const bookmakers = Array.isArray(event.bookmakers) ? event.bookmakers : [];
+      if (bookmakers.length === 0) {
+        failureReason = failureReason ?? "ODDS_API_NO_BOOKMAKERS";
+        continue;
+      }
+      bookmakersReturned += bookmakers.length;
+      usableMarkets += 1;
+    }
+  }
+
+  const authStatus = "AUTH_OK";
+  const status =
+    eventsReturned > 0 && bookmakersReturned > 0 && usableMarkets > 0
+      ? "USABLE"
+      : "NOT_USABLE";
+
+  return {
+    status,
+    authStatus,
+    quota,
+    sportsAvailable: sportsRes.data.length,
+    sportsScanned,
+    eventsReturned,
+    bookmakersReturned,
+    usableMarkets,
+    failureReason:
+      status === "USABLE"
+        ? null
+        : failureReason ?? (quota.status === "EXHAUSTED" ? "ODDS_API_QUOTA_EXHAUSTED" : "ODDS_API_NOT_USABLE"),
+    supportedSportKeys: listSupportedOddsSportKeys(),
+    contractBasePath: ODDS_API_CONTRACT.basePath,
+  };
+}
+
 export async function buildProviderHealthReport() {
   const config = getAppConfigReport();
   const appState = await getAppState();
-  const demoCreds = await resolveKalshiCredentials("demo");
   const prodCreds = await resolveKalshiCredentials("prod");
-  const activeEnv: KalshiEnvironment = prodCreds ? "prod" : demoCreds ? "demo" : "demo";
-  const creds = prodCreds ?? demoCreds;
+  const activeEnv: KalshiEnvironment = "prod";
+  const creds = prodCreds;
   const kalshi = creds ? new KalshiClient(creds, activeEnv) : KalshiClient.withoutCredentials(activeEnv);
 
-  const [exchange, balance, positions, oddsSports, quota] = await Promise.all([
+  const [exchange, balance, positions, oddsDiagnostics] = await Promise.all([
     kalshi.getExchangeStatus(),
     creds ? kalshi.getBalance() : Promise.resolve({ ok: false as const, error: { provider: "kalshi" as const, category: "not_configured" as const, message: "PROVIDER_NOT_CONFIGURED" }, status: 401 }),
     creds ? kalshi.getPositions(20) : Promise.resolve({ ok: false as const, error: { provider: "kalshi" as const, category: "not_configured" as const, message: "PROVIDER_NOT_CONFIGURED" }, status: 401 }),
-    oddsApiClient.getSports(),
-    Promise.resolve(getOddsQuotaState()),
+    buildOddsDiagnostics(),
   ]);
 
   const kalshiAuthStatus = creds
@@ -50,41 +155,40 @@ export async function buildProviderHealthReport() {
       ? "TRADING_ACTIVE"
       : "EXCHANGE_UP_TRADING_DOWN"
     : "UNREACHABLE";
-  const oddsConfigured = oddsSports.ok;
-  const oddsFreshness = oddsConfigured ? "READY_FOR_FETCH" : "NOT_CONFIGURED";
+  const oddsConfigured = oddsDiagnostics.authStatus === "AUTH_OK";
+  const oddsUsable = oddsDiagnostics.status === "USABLE";
   const scoreAvailability = "UNCONFIRMED — SCORE_COVERAGE_UNSUPPORTED";
 
   let executionReadiness: ProviderHealthColor = "RED";
-  if (creds && exchange.ok && balance.ok && oddsConfigured && quota.status !== "EXHAUSTED") {
+  if (creds && exchange.ok && balance.ok && oddsUsable && oddsDiagnostics.quota.status !== "EXHAUSTED") {
     executionReadiness = "GREEN";
   } else if (exchange.ok || oddsConfigured) {
     executionReadiness = "YELLOW";
   }
 
   return {
-    keyStatus: creds || oddsConfigured ? "CONFIGURED" : "NOT_CONFIGURED",
+    keyStatus: creds && oddsConfigured ? "CONFIGURED" : "NOT_CONFIGURED",
     secretScanStatus: config.secretSafety,
     kalshiAuthStatus,
-    kalshiMode: activeEnv.toUpperCase(),
+    kalshiMode: "PRODUCTION",
     kalshiExchangeStatus,
     kalshiAccountStatus: balance.ok ? "ACCOUNT_OK" : kalshiAuthStatus,
     kalshiWebSocketStatus: "DISCONNECTED",
     kalshiOrderbookAvailability: exchange.ok ? "REST_AVAILABLE" : "UNAVAILABLE",
-    oddsApiQuota: quota,
-    oddsApiOddsFreshness: oddsFreshness,
+    oddsApiQuota: oddsDiagnostics.quota,
+    oddsApiOddsFreshness: oddsUsable ? "USABLE" : "NOT_USABLE",
     oddsApiScoreAvailability: scoreAvailability,
+    oddsDiagnostics,
     providerErrorCategory:
       !exchange.ok && "error" in exchange
         ? exchange.error.category
-        : !oddsSports.ok && "error" in oddsSports
-          ? oddsSports.error.category
-          : null,
+        : oddsDiagnostics.failureReason,
     executionReadiness,
     executionReadinessNote:
       executionReadiness === "GREEN"
-        ? "Eligible for per-trade validation — not auto-execute"
+        ? "Production keys + usable Odds API — per-trade validation required"
         : executionReadiness === "YELLOW"
-          ? "Watch/display only"
+          ? "Watch/display only — missing production pair or usable Odds feed"
           : "Execution blocked",
     autoStatus: appState.executionMode === "AUTO" ? "AUTO_SELECTED" : "AUTO_SELECTABLE",
     profitabilityStatus: "UNPROVEN",
@@ -94,63 +198,113 @@ export async function buildProviderHealthReport() {
       positions: positions.ok ? positions.data : null,
     },
     odds: {
-      sportsCount: oddsSports.ok ? oddsSports.data.length : 0,
-      quota,
+      sportsCount: oddsDiagnostics.sportsAvailable,
+      quota: oddsDiagnostics.quota,
+      diagnostics: oddsDiagnostics,
     },
   };
 }
 
-export async function buildGamesResponse(sport = "basketball_nba") {
-  const odds = await oddsApiClient.getEvents(sport);
-  if (!odds.ok) {
+export async function buildGamesResponse(sport?: string) {
+  const readiness = await getKeyReadinessReport();
+  const health = await buildProviderHealthReport();
+
+  if (!readiness.oddsConfigured) {
     return {
-      dataLabel: "NO_REAL_DATA_CONNECTED",
-      providerStatus: odds.error.message,
+      dataLabel: "PROVIDER_NOT_CONFIGURED",
+      providerStatus: "PROVIDER_NOT_CONFIGURED",
+      message: "Odds API key missing — add in Settings",
+      primaryBlocker: "Odds API key not configured",
+      nextAction: "Add Odds API key in Settings → API Keys",
       items: [],
-      errorCategory: odds.error.category,
     };
   }
 
-  const events = Array.isArray(odds.data) ? odds.data : [];
+  if (health.oddsDiagnostics.status !== "USABLE") {
+    return {
+      dataLabel: "NO_REAL_DATA_CONNECTED",
+      providerStatus: health.oddsDiagnostics.status,
+      message: health.oddsDiagnostics.failureReason ?? "Odds API not usable",
+      primaryBlocker: health.oddsDiagnostics.failureReason ?? "ODDS_API_NOT_USABLE",
+      nextAction: "Verify Odds API key and quota in Settings",
+      items: [],
+    };
+  }
+
+  const sportsToFetch = sport
+    ? [sport]
+    : (health.oddsDiagnostics.supportedSportKeys as string[] | undefined) ??
+      listSupportedOddsSportKeys().slice();
+
+  const items: Array<{
+    id: string | null;
+    sportKey: string | null;
+    commenceTime: string | null;
+    homeTeam: string | null;
+    awayTeam: string | null;
+    live: boolean;
+  }> = [];
+
+  for (const sportKey of sportsToFetch) {
+    const odds = await oddsApiClient.getEvents(sportKey);
+    if (!odds.ok) continue;
+    const events = Array.isArray(odds.data) ? odds.data : [];
+    for (const e of events) {
+      if (typeof e !== "object" || e === null) continue;
+      const row = e as Record<string, unknown>;
+      const commenceTime =
+        typeof row.commence_time === "string" ? row.commence_time : null;
+      const live = commenceTime ? Date.parse(commenceTime) < Date.now() : false;
+      items.push({
+        id: typeof row.id === "string" ? row.id : null,
+        sportKey: typeof row.sport_key === "string" ? row.sport_key : sportKey,
+        commenceTime,
+        homeTeam: typeof row.home_team === "string" ? row.home_team : null,
+        awayTeam: typeof row.away_team === "string" ? row.away_team : null,
+        live,
+      });
+    }
+  }
+
+  const liveCount = items.filter((i) => i.live).length;
+
   return {
-    dataLabel: "LIVE_PROVIDER_DATA",
+    dataLabel: items.length > 0 ? "LIVE_PROVIDER_DATA" : "NO_MATCHES_FOUND",
     providerStatus: "CONNECTED",
-    sport,
-    count: events.length,
-    items: events
-      .filter((e) => typeof e === "object" && e !== null)
-      .map((e) => {
-        const row = e as Record<string, unknown>;
-        return {
-          id: typeof row.id === "string" ? row.id : null,
-          sportKey: typeof row.sport_key === "string" ? row.sport_key : sport,
-          commenceTime:
-            typeof row.commence_time === "string" ? row.commence_time : null,
-          homeTeam: typeof row.home_team === "string" ? row.home_team : null,
-          awayTeam: typeof row.away_team === "string" ? row.away_team : null,
-        };
-      }),
+    message:
+      items.length > 0
+        ? `${items.length} events (${liveCount} live) from Odds API across ${sportsToFetch.length} sport(s)`
+        : "Odds API connected but no events returned for requested sports",
+    primaryBlocker: items.length === 0 ? "odds_api_no_events" : null,
+    nextAction:
+      items.length === 0
+        ? "Check Odds API sport coverage or try again closer to game time"
+        : "Use Opportunities for Kalshi ↔ Odds matched edges",
+    sport: sport ?? "all_supported",
+    count: items.length,
+    liveCount,
+    items,
   };
 }
 
 export async function buildPortfolioResponse() {
-  const creds = (await resolveKalshiCredentials("prod")) ??
-    (await resolveKalshiCredentials("demo"));
+  const creds = await resolveKalshiCredentials("prod");
   if (!creds) {
     return {
       providerStatus: "PROVIDER_NOT_CONFIGURED",
       balance: null,
       positions: [],
+      environment: "prod" as const,
     };
   }
-  const client = new KalshiClient(creds, creds.environment);
+  const client = new KalshiClient(creds, "prod");
   const [balance, positions] = await Promise.all([
     client.getBalance(),
     client.getPositions(50),
   ]);
   return {
     providerStatus: balance.ok ? "CONNECTED" : "ERROR",
-    environment: creds.environment,
+    environment: "prod" as const,
     balance: balance.ok ? { value: balance.data.balance } : null,
     positions: positions.ok ? positions.data.positions : [],
     errorCategory: balance.ok ? null : balance.error.category,
@@ -165,7 +319,7 @@ export async function buildAccountResponseFromProviders() {
       bankroll: {
         label: "KALSHI_BALANCE",
         value: portfolio.balance.value,
-        note: "Sanitized Kalshi balance — cents/fixed-point normalization pending",
+        note: "Sanitized Kalshi production balance",
       },
       environment: portfolio.environment,
       openTrades: Array.isArray(portfolio.positions) ? portfolio.positions.length : 0,

@@ -62,8 +62,19 @@ export function ExecuteOpportunityButton({ item }: { item: ScoredOpportunity }) 
 export function StakeSummaryRow({ item }: { item: ScoredOpportunity }) {
   return (
     <div className="mt-1 space-y-0.5 text-[10px] text-edge-muted">
-      <p>Req: ${item.userRequestedStake.toFixed(2)} · AI: ${item.aiRecommendedStake.toFixed(2)}</p>
-      <p>Allowed: ${item.finalAllowedStake.toFixed(2)} · Max loss: ${item.maxLoss.toFixed(2)}</p>
+      <p>
+        Req ${item.userRequestedStake.toFixed(2)} · Suggested ${item.suggestedStake.toFixed(2)} · Allowed $
+        {item.finalAllowedStake.toFixed(2)}
+      </p>
+      <p>
+        Max loss ${item.maxLoss.toFixed(2)} · Exp profit ${item.expectedDollarProfit.toFixed(2)}
+      </p>
+      <p>{item.confidenceLevel}</p>
+      <p>
+        {item.autoAllowed ? "Auto allowed" : "Manual only"}
+        {item.manualOnly ? " · manual override may be required" : ""}
+      </p>
+      <p className="text-amber-300/80">{item.stakeReason}</p>
     </div>
   );
 }

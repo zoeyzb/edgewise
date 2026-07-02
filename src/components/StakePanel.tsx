@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { STAKE_MODES, type StakeMode } from "@/lib/core/types";
+import { RISK_CONFIG } from "@/lib/core/risk-config";
 import { StatusBadge } from "./StatusBadge";
 import { cn } from "@/lib/utils/cn";
 
 interface StakePreview {
   userRequestedStake: number;
   aiRecommendedStake: number;
+  suggestedStake?: number;
   finalAllowedStake: number;
   maxLoss: number;
   expectedDollarProfit: number;
@@ -16,30 +17,44 @@ interface StakePreview {
 }
 
 interface StakeSettings {
-  mode: StakeMode;
+  mode: string;
+  manualStakeMode: "DOLLAR" | "PERCENT" | "SUGGESTED";
   fixedDollarAmount: number;
   fixedPercentAmount: number;
+  autoFixedDollarAmount: number;
+  autoFixedPercentAmount: number;
+  autoMaxDollarAmount: number;
+  autoMaxPercentAmount: number;
   userMaxStake: number;
-  dailyMaxLoss: number;
-  sessionMaxLoss: number;
-  maxOpenExposure: number;
-  maxTradesPerDay: number;
-  maxAutoTradesPerDay: number;
   bankrollPlaceholder: number;
 }
 
 export function StakePanel({ compact = false }: { compact?: boolean }) {
   const [settings, setSettings] = useState<StakeSettings | null>(null);
   const [preview, setPreview] = useState<StakePreview | null>(null);
+  const [bankrollSource, setBankrollSource] = useState<string>("—");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/core/risk");
-      const data = await res.json();
+      const [riskRes, accountRes] = await Promise.all([
+        fetch("/api/core/risk"),
+        fetch("/api/core/account"),
+      ]);
+      const data = await riskRes.json();
+      const account = await accountRes.json();
       setSettings(data.stakeSettings);
       setPreview(data.stakePreview);
+      setBankrollSource(
+        account.bankroll?.label === "KALSHI_BALANCE"
+          ? `Kalshi $${account.bankroll.value}`
+          : account.bankroll?.label === "PLACEHOLDER_UI_ONLY"
+            ? "Placeholder (connect Kalshi for real balance)"
+            : account.bankroll?.value != null
+              ? `$${account.bankroll.value}`
+              : "Unknown"
+      );
     } finally {
       setLoading(false);
     }
@@ -66,76 +81,117 @@ export function StakePanel({ compact = false }: { compact?: boolean }) {
     }
   }
 
+  function applySuggestedManual() {
+    if (!preview) return;
+    save({
+      manualStakeMode: "SUGGESTED",
+      mode: "AI_RECOMMENDED_STAKE",
+      fixedDollarAmount: preview.aiRecommendedStake,
+      fixedPercentAmount: RISK_CONFIG.conservativeStakePercent,
+    });
+  }
+
   if (loading || !settings) {
     return <p className="text-sm text-edge-muted">Loading stake settings...</p>;
   }
 
   return (
-    <div className={cn("space-y-4 rounded-xl border border-edge-border bg-edge-surface p-5", compact && "p-4")}>
+    <div className={cn("space-y-6 rounded-xl border border-edge-border bg-edge-surface p-5", compact && "p-4")}>
       <div className="flex items-center justify-between">
         <h3 className="font-medium">Stake Control</h3>
-        <StatusBadge variant="muted">RISK ENGINE</StatusBadge>
+        <StatusBadge variant="muted">Bankroll: {bankrollSource}</StatusBadge>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {STAKE_MODES.map((mode) => (
-          <button
-            key={mode}
-            type="button"
-            disabled={saving}
-            onClick={() => save({ mode })}
-            className={cn(
-              "rounded border px-2 py-1 text-[10px] font-mono",
-              settings.mode === mode
-                ? "border-edge-accent bg-edge-accent/15 text-edge-accent"
-                : "border-edge-border text-edge-muted"
-            )}
-          >
-            {mode}
-          </button>
-        ))}
-      </div>
+      <section className="space-y-3">
+        <h4 className="text-sm font-medium">Manual trade</h4>
+        <div className="flex flex-wrap gap-2">
+          {(["DOLLAR", "PERCENT", "SUGGESTED"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              disabled={saving}
+              onClick={() =>
+                save({
+                  manualStakeMode: m,
+                  mode: m === "DOLLAR" ? "FIXED_DOLLAR_STAKE" : m === "PERCENT" ? "FIXED_PERCENT_STAKE" : "AI_RECOMMENDED_STAKE",
+                })
+              }
+              className={cn(
+                "rounded border px-2 py-1 text-[10px] font-mono",
+                settings.manualStakeMode === m
+                  ? "border-edge-accent bg-edge-accent/15 text-edge-accent"
+                  : "border-edge-border text-edge-muted"
+              )}
+            >
+              {m === "DOLLAR" ? "Exact $" : m === "PERCENT" ? "% bankroll" : "Suggested"}
+            </button>
+          ))}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field
+            label="Manual exact $"
+            value={settings.fixedDollarAmount}
+            onChange={(v) => save({ fixedDollarAmount: v, manualStakeMode: "DOLLAR", mode: "FIXED_DOLLAR_STAKE" })}
+          />
+          <Field
+            label="Manual % bankroll"
+            value={settings.fixedPercentAmount}
+            step={0.5}
+            onChange={(v) => save({ fixedPercentAmount: v, manualStakeMode: "PERCENT", mode: "FIXED_PERCENT_STAKE" })}
+          />
+        </div>
+        <button
+          type="button"
+          disabled={saving || !preview}
+          onClick={applySuggestedManual}
+          className="rounded border border-edge-border px-3 py-1.5 text-xs hover:text-slate-200"
+        >
+          Use suggested amount ({preview ? `$${preview.aiRecommendedStake}` : "—"})
+        </button>
+      </section>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Fixed dollar" type="number" value={settings.fixedDollarAmount}
-          onChange={(v) => save({ fixedDollarAmount: v })} />
-        <Field label="Fixed percent" type="number" value={settings.fixedPercentAmount}
-          onChange={(v) => save({ fixedPercentAmount: v })} step={0.1} />
-        <Field label="User max stake" type="number" value={settings.userMaxStake}
-          onChange={(v) => save({ userMaxStake: v })} />
-        <Field label="Bankroll (placeholder)" type="number" value={settings.bankrollPlaceholder}
-          onChange={(v) => save({ bankrollPlaceholder: v })} />
-        <Field label="Daily max loss %" type="number" value={settings.dailyMaxLoss}
-          onChange={(v) => save({ dailyMaxLoss: v })} step={0.1} />
-        <Field label="Session max loss %" type="number" value={settings.sessionMaxLoss}
-          onChange={(v) => save({ sessionMaxLoss: v })} step={0.1} />
-        <Field label="Max open exposure %" type="number" value={settings.maxOpenExposure}
-          onChange={(v) => save({ maxOpenExposure: v })} step={0.1} />
-        <Field label="Max trades / day" type="number" value={settings.maxTradesPerDay}
-          onChange={(v) => save({ maxTradesPerDay: v })} />
-        <Field label="Max Auto trades / day" type="number" value={settings.maxAutoTradesPerDay}
-          onChange={(v) => save({ maxAutoTradesPerDay: v })} />
-      </div>
+      <section className="space-y-3">
+        <h4 className="text-sm font-medium">Auto trade</h4>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field
+            label="Auto exact $ / trade"
+            value={settings.autoFixedDollarAmount}
+            onChange={(v) => save({ autoFixedDollarAmount: v })}
+          />
+          <Field
+            label="Auto % bankroll / trade"
+            value={settings.autoFixedPercentAmount}
+            step={0.5}
+            onChange={(v) => save({ autoFixedPercentAmount: v })}
+          />
+          <Field
+            label="Auto max $ / trade"
+            value={settings.autoMaxDollarAmount}
+            onChange={(v) => save({ autoMaxDollarAmount: v })}
+          />
+          <Field
+            label="Auto max % bankroll"
+            value={settings.autoMaxPercentAmount}
+            step={0.5}
+            onChange={(v) => save({ autoMaxPercentAmount: v })}
+          />
+        </div>
+        <p className="text-xs text-edge-muted">
+          Auto default max {RISK_CONFIG.autoDefaultMaxStakePercent}% · hard max {RISK_CONFIG.autoHardMaxStakePercent}%
+          · manual-only above {RISK_CONFIG.manualConfirmStakePercent}% · blocked at {RISK_CONFIG.absoluteBlockStakePercent}%
+        </p>
+      </section>
 
       {preview && (
-        <div className="rounded-lg border border-edge-border bg-edge-bg/50 p-4">
-          <p className="mb-3 text-xs font-medium uppercase tracking-wide text-edge-muted">
-            Stake Preview
-          </p>
-          <dl className="grid gap-2 text-sm sm:grid-cols-2">
-            <PreviewRow label="User requested stake" value={`$${preview.userRequestedStake}`} />
-            <PreviewRow label="AI recommended stake" value={`$${preview.aiRecommendedStake}`} />
-            <PreviewRow label="Final allowed stake" value={`$${preview.finalAllowedStake}`} />
+        <div className="rounded-lg border border-edge-border bg-edge-bg/50 p-4 text-sm">
+          <dl className="grid gap-2 sm:grid-cols-2">
+            <PreviewRow label="Requested" value={`$${preview.userRequestedStake}`} />
+            <PreviewRow label="Suggested" value={`$${preview.suggestedStake ?? preview.aiRecommendedStake}`} />
+            <PreviewRow label="Allowed" value={`$${preview.finalAllowedStake}`} />
             <PreviewRow label="Max loss" value={`$${preview.maxLoss}`} />
-            <PreviewRow label="Expected dollar profit" value={`$${preview.expectedDollarProfit}`} />
-            <PreviewRow label="Stake reason" value={preview.reason} />
+            <PreviewRow label="Expected profit" value={`$${preview.expectedDollarProfit}`} />
+            <PreviewRow label="Reason" value={preview.reason} />
           </dl>
-          {preview.decision === "BLOCKED" && (
-            <p className="mt-3 font-mono text-xs text-red-300">STAKE_BLOCKED_BY_RISK_ENGINE</p>
-          )}
-          {preview.decision === "REDUCED" && (
-            <p className="mt-3 font-mono text-xs text-amber-300">STAKE_REDUCED_BY_RISK_ENGINE</p>
-          )}
         </div>
       )}
     </div>
@@ -146,21 +202,19 @@ function Field({
   label,
   value,
   onChange,
-  type = "text",
   step,
 }: {
   label: string;
   value: number;
   onChange: (v: number) => void;
-  type?: string;
   step?: number;
 }) {
   return (
     <label className="block text-xs">
       <span className="text-edge-muted">{label}</span>
       <input
-        type={type}
-        step={step}
+        type="number"
+        step={step ?? 1}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
         className="mt-1 w-full rounded border border-edge-border bg-edge-bg px-3 py-2 text-sm text-slate-100"

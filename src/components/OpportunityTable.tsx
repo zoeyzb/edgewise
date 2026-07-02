@@ -40,8 +40,12 @@ export function OpportunityTable({
         message={
           message ??
           (dataLabel === "PROVIDER_NOT_CONFIGURED"
-            ? "Provider not configured. Connect Kalshi and Odds API keys to begin edge discovery."
-            : "No verified matches found. Edgewise does not inject fake opportunities.")
+            ? "Configure Kalshi production keys to scan markets."
+            : dataLabel === "KALSHI_SPORTS_MARKETS_FOUND" ||
+                dataLabel === "KALSHI_MARKETS_FOUND_BUT_CLASSIFIER_REJECTED_ALL" ||
+                dataLabel === "KALSHI_QUERY_RETURNED_ZERO"
+              ? "See Kalshi scan summary above — no Odds edge candidates in this table yet."
+              : "No verified Odds edge candidates.")
         }
         label={dataLabel}
       />

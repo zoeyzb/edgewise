@@ -88,9 +88,14 @@ export const KALSHI_CONTRACT = {
   },
 
   marketStatusValues: {
+    /** Values on market objects in GET /markets response bodies. */
+    response: ["active", "initialized", "inactive", "closed", "determined", "disputed", "amended", "finalized"] as const,
+    /** Valid GET /markets?status= filter values — use `open` to match response `active`. */
+    queryFilter: ["unopened", "open", "paused", "closed", "settled"] as const,
     verified: ["active", "closed", "settled", "finalized"] as const,
     unconfirmed: UNCONFIRMED_MARKER,
-    note: "Full enum may include initialized, inactive, determined, disputed — verify at runtime.",
+    note:
+      "GET /markets status filter accepts open (not active). Response body uses active for open markets.",
   },
 
   orderStatusValues: {
@@ -283,6 +288,7 @@ export interface KalshiBalance {
 export interface KalshiMarketSummary {
   ticker: string;
   event_ticker?: string;
+  series_ticker?: string;
   title?: string;
   status?: string;
   yes_bid_dollars?: string;
@@ -344,4 +350,6 @@ export interface SanitizedProviderError {
     | "unknown";
   message: string;
   httpStatus?: number;
+  /** Truncated Kalshi error JSON/text — no secrets. */
+  responseBody?: string;
 }

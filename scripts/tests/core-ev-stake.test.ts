@@ -39,16 +39,16 @@ describe("EV and edge", () => {
 });
 
 describe("stake engine", () => {
-  const base = { bankroll: 1000, userMaxStake: 50, fixedDollarAmount: 10, fixedPercentAmount: 0.5, opportunity: mockOpportunity() };
+  const base = { bankroll: 1000, userMaxStake: 500, fixedDollarAmount: 100, fixedPercentAmount: 10, opportunity: mockOpportunity() };
 
   it("fixed-dollar stake", () => {
-    const d = computeStakeDecision({ ...base, mode: "FIXED_DOLLAR_STAKE" });
-    assert.equal(d.userRequestedStake, 10);
+    const d = computeStakeDecision({ ...base, mode: "FIXED_DOLLAR_STAKE", fixedDollarAmount: 50 });
+    assert.equal(d.userRequestedStake, 50);
   });
 
   it("fixed-percent stake", () => {
     const d = computeStakeDecision({ ...base, mode: "FIXED_PERCENT_STAKE" });
-    assert.equal(d.userRequestedStake, 5);
+    assert.equal(d.userRequestedStake, 100);
   });
 
   it("AI recommended stake", () => {
@@ -68,8 +68,14 @@ describe("stake engine", () => {
   });
 
   it("final allowed stake respects caps", () => {
-    const d = computeStakeDecision({ ...base, mode: "FIXED_DOLLAR_STAKE", fixedDollarAmount: 100 });
-    assert.ok(d.finalAllowedStake <= 10);
+    const d = computeStakeDecision({ ...base, mode: "FIXED_DOLLAR_STAKE", fixedDollarAmount: 400 });
+    assert.ok(d.finalAllowedStake <= 250);
+  });
+
+  it("blocks 30%+ bankroll stake", () => {
+    const d = computeStakeDecision({ ...base, mode: "FIXED_DOLLAR_STAKE", fixedDollarAmount: 350 });
+    assert.equal(d.decision, "BLOCKED");
+    assert.match(d.reason, /30_PERCENT/);
   });
 });
 

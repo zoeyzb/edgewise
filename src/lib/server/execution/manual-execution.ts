@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { getAppConfigReport, isKillSwitchActive, isRealMoneyTradingEnabled } from "@/lib/core/config";
 import { runExecutionGates } from "@/lib/core/execution-gates";
 import { EXECUTION_BLOCK_CODES } from "@/lib/core/risk-config";
+import { KEY_BLOCK_CODES } from "@/lib/core/key-constants";
 import {
   assessExposureLimits,
   checkCorrelatedExposure,
@@ -13,6 +14,8 @@ import {
 import { computeStakeDecision } from "@/lib/core/staking";
 import type { ManualExecutionEnabledStatus, ScoredOpportunity } from "@/lib/core/types";
 import { KalshiClient } from "@/lib/core/kalshi-client";
+import { normalizeTeamName } from "@/lib/core/matcher";
+import { oddsApiClient } from "@/lib/core/odds-client";
 import { findOpportunityById } from "@/lib/server/opportunities/opportunity-service";
 import {
   buildProviderHealthReport,
@@ -55,7 +58,8 @@ export async function getManualExecutionStatus(): Promise<ManualExecutionEnabled
   if (config.secretSafety === "EXPOSED_BY_MISTAKE") blockedReasons.push(EXECUTION_BLOCK_CODES.SECRET_SCAN_FAILED);
   if (!storageOk) blockedReasons.push(EXECUTION_BLOCK_CODES.STORAGE_UNHEALTHY);
   if (!loggingOk) blockedReasons.push(EXECUTION_BLOCK_CODES.LOGGING_UNHEALTHY);
-  if (readiness.blockers.length > 0) blockedReasons.push(readiness.blockers[0]!);
+  if (!readiness.kalshiProdConfigured) blockedReasons.push("production Kalshi pair not configured");
+  if (!readiness.oddsConfigured) blockedReasons.push(KEY_BLOCK_CODES.ODDS_API_KEY_MISSING);
 
   return {
     enabled: blockedReasons.length === 0,
@@ -67,14 +71,80 @@ export async function getManualExecutionStatus(): Promise<ManualExecutionEnabled
 }
 
 async function resolveClient() {
-  const prod = await resolveKalshiCredentials("prod");
-  const demo = await resolveKalshiCredentials("demo");
-  const creds = prod ?? demo;
-  const env = prod ? "prod" : "demo";
+  const creds = await resolveKalshiCredentials("prod");
   return {
-    client: creds ? new KalshiClient(creds, env) : KalshiClient.withoutCredentials(env),
+    client: creds ? new KalshiClient(creds, "prod") : KalshiClient.withoutCredentials("prod"),
     creds,
   };
+}
+
+async function revalidateOpportunityWithFreshOdds(
+  opportunity: ScoredOpportunity,
+  orderbook: import("@/lib/core/contracts").KalshiExecutableOrderbook & {
+    blockedReason?: string | null;
+    freshnessState?: string;
+  },
+  marketStatus: string | undefined
+): Promise<{ ok: true; opportunity: ScoredOpportunity } | { ok: false; reason: string }> {
+  const oddsRes = await oddsApiClient.getOdds(opportunity.sport, {
+    regions: "us",
+    markets: opportunity.sportsbookMarket || "h2h",
+    oddsFormat: "american",
+  });
+
+  if (!oddsRes.ok) {
+    return { ok: false, reason: EXECUTION_BLOCK_CODES.FINAL_ODDS_REVALIDATION_FAILED };
+  }
+
+  const events = oddsRes.data.filter((e) => typeof e === "object" && e !== null) as Record<
+    string,
+    unknown
+  >[];
+  const matched =
+    events.find((e) => typeof e.id === "string" && e.id === opportunity.sportsbookEvent) ??
+    events.find((e) => {
+      const home = typeof e.home_team === "string" ? e.home_team : "";
+      const away = typeof e.away_team === "string" ? e.away_team : "";
+      return (
+        normalizeTeamName(home) === normalizeTeamName(opportunity.teams.home) &&
+        normalizeTeamName(away) === normalizeTeamName(opportunity.teams.away)
+      );
+    });
+
+  if (!matched) {
+    return { ok: false, reason: EXECUTION_BLOCK_CODES.FINAL_ODDS_REVALIDATION_FAILED };
+  }
+
+  const bookmakers = Array.isArray(matched.bookmakers) ? matched.bookmakers : [];
+  if (bookmakers.length === 0) {
+    return { ok: false, reason: EXECUTION_BLOCK_CODES.FINAL_ODDS_REVALIDATION_FAILED };
+  }
+
+  const { buildScoredOpportunity } = await import("@/lib/core/opportunity-engine");
+  const commenceTime =
+    typeof matched.commence_time === "string" ? matched.commence_time : opportunity.startTime;
+  const isLive = commenceTime ? Date.parse(commenceTime) < Date.now() : opportunity.liveStatus === "LIVE";
+
+  const fresh = buildScoredOpportunity({
+    id: opportunity.id,
+    sportKey: opportunity.sport,
+    league: opportunity.league,
+    kalshiMarketTicker: opportunity.kalshiTicker,
+    kalshiMarketTitle: opportunity.kalshiMarket,
+    kalshiEventTicker: opportunity.kalshiEvent,
+    kalshiMarketStatus: marketStatus ?? "active",
+    orderbook,
+    oddsEvent: matched,
+    targetTeamName: opportunity.side === "YES" ? opportunity.teams.home : opportunity.teams.away,
+    opponentTeamName: opportunity.side === "YES" ? opportunity.teams.away : opportunity.teams.home,
+    side: opportunity.side,
+    isLive,
+    oddsFresh: true,
+    requestedStake: opportunity.userRequestedStake || opportunity.finalAllowedStake || 50,
+    oddsMarketKey: opportunity.sportsbookMarket,
+  });
+
+  return { ok: true, opportunity: fresh };
 }
 
 export async function executeManualOrder(input: {
@@ -117,33 +187,48 @@ async function executeManualOrderWithOpportunity(
     client.getOrderbook(opportunity.kalshiTicker),
   ]);
 
-  let freshOpportunity = opportunity;
-  if (orderbookRes.ok) {
-    const { buildScoredOpportunity } = await import("@/lib/core/opportunity-engine");
-    freshOpportunity = buildScoredOpportunity({
-      id: opportunity.id,
-      sportKey: opportunity.sport,
-      league: opportunity.league,
-      kalshiMarketTicker: opportunity.kalshiTicker,
-      kalshiMarketTitle: opportunity.kalshiMarket,
-      kalshiEventTicker: opportunity.kalshiEvent,
-      kalshiMarketStatus: marketRes.ok ? String(marketRes.data.market?.status ?? "active") : "active",
-      orderbook: orderbookRes.data,
-      oddsEvent: {
-        id: opportunity.sportsbookEvent,
-        sport_key: opportunity.sport,
-        commence_time: opportunity.startTime,
-        home_team: opportunity.teams.home,
-        away_team: opportunity.teams.away,
-        bookmakers: [],
-      },
-      targetTeamName: opportunity.teams.home,
-      opponentTeamName: opportunity.teams.away,
-      side: opportunity.side,
-      isLive: opportunity.liveStatus === "LIVE",
-      requestedStake: appState.stakeSettings.userMaxStake,
+  if (!orderbookRes.ok) {
+    await appendExecutionLog({
+      id: randomUUID(),
+      at: new Date().toISOString(),
+      status: "EXECUTION_BLOCKED",
+      reason: EXECUTION_BLOCK_CODES.FINAL_ODDS_REVALIDATION_FAILED,
+      opportunityId: opportunity.id,
+      market: opportunity.kalshiTicker,
     });
+    return {
+      status: "EXECUTION_BLOCKED",
+      reason: EXECUTION_BLOCK_CODES.FINAL_ODDS_REVALIDATION_FAILED,
+      failedGate: "ORDERBOOK_FRESH",
+      orderPlaced: false,
+    };
   }
+
+  const marketStatus = marketRes.ok ? String(marketRes.data.market?.status ?? "active") : "active";
+  const revalidated = await revalidateOpportunityWithFreshOdds(
+    opportunity,
+    orderbookRes.data,
+    marketStatus
+  );
+
+  if (!revalidated.ok) {
+    await appendExecutionLog({
+      id: randomUUID(),
+      at: new Date().toISOString(),
+      status: "EXECUTION_BLOCKED",
+      reason: revalidated.reason,
+      opportunityId: opportunity.id,
+      market: opportunity.kalshiTicker,
+    });
+    return {
+      status: "EXECUTION_BLOCKED",
+      reason: revalidated.reason,
+      failedGate: "ODDS_FRESH",
+      orderPlaced: false,
+    };
+  }
+
+  const freshOpportunity = revalidated.opportunity;
 
   const bankroll = balance.ok ? balance.data.balance / 100 : 0;
   const balanceFresh =
@@ -198,7 +283,7 @@ async function executeManualOrderWithOpportunity(
     secretScanPassed: config.secretSafety !== "EXPOSED_BY_MISTAKE",
     storageHealthy: storageOk,
     loggingHealthy: loggingOk,
-    kalshiAuthValid: creds != null && readiness.blockers.length === 0,
+    kalshiAuthValid: creds != null && readiness.kalshiProdConfigured,
     exchangeTradingActive: exchange.ok && exchange.data.trading_active,
     balanceFresh: bankroll > 0 ? balanceFresh : false,
     positionsFresh: positions.ok,

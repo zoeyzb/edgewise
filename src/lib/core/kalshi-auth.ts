@@ -89,3 +89,22 @@ export function sanitizeKalshiError(status: number): {
   }
   return { category: "validation", message: `Kalshi request failed (${status})` };
 }
+
+/** Extract safe error detail from Kalshi error JSON — no credentials. */
+export function sanitizeKalshiErrorResponseBody(json: unknown, rawText: string): string {
+  const maxLen = 400;
+  if (json && typeof json === "object" && !Array.isArray(json)) {
+    const o = json as Record<string, unknown>;
+    const safe: Record<string, unknown> = {};
+    for (const key of ["error", "code", "message", "details", "detail"]) {
+      const v = o[key];
+      if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+        safe[key] = v;
+      }
+    }
+    if (Object.keys(safe).length > 0) {
+      return JSON.stringify(safe).slice(0, maxLen);
+    }
+  }
+  return rawText.replace(/\s+/g, " ").trim().slice(0, maxLen);
+}

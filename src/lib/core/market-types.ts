@@ -129,6 +129,14 @@ export function detectKalshiMarketType(input: {
   };
 }
 
+export function oddsMarketKeyForKind(
+  kind: DetectedMarketType["kind"]
+): string {
+  if (kind === "SPREAD") return ODDS_API_CONTRACT.marketKeys.spreads;
+  if (kind === "TOTAL") return ODDS_API_CONTRACT.marketKeys.totals;
+  return ODDS_API_CONTRACT.marketKeys.moneyline;
+}
+
 export function detectOddsMarketType(marketKey: string): DetectedMarketType {
   const key = marketKey.toLowerCase();
 

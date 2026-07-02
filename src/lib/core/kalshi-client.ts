@@ -5,6 +5,7 @@ import {
   buildKalshiAuthHeaders,
   kalshiRestOrigin,
   sanitizeKalshiError,
+  sanitizeKalshiErrorResponseBody,
   type KalshiCredentials,
   type KalshiEnvironment,
 } from "@/lib/core/kalshi-auth";
@@ -105,14 +106,16 @@ export class KalshiClient {
 
       if (!res.ok) {
         const err = sanitizeKalshiError(res.status);
+        const responseBody = sanitizeKalshiErrorResponseBody(json, text);
         return {
           ok: false,
           status: res.status,
           error: {
             provider: "kalshi",
             category: err.category,
-            message: err.message,
+            message: responseBody || err.message,
             httpStatus: res.status,
+            responseBody,
           },
         };
       }
